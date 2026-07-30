@@ -861,35 +861,31 @@ def action_timeline(ins, dept, meta):
            tl("60 天 · 巩固固化", a60, "#d4a72c") + tl("90 天 · 复盘放大", a90, "#1a7f37") + '</div>'
 
 
-def employee_type_distribution(data, bu_name, l2_name, dept_name, meta):
-    """员工类型分布：同级部门 100% 堆叠条形图，本团队高亮"""
-    l2 = data["business_units"].get(bu_name, {}).get("l2_units", {}).get(l2_name, {})
-    depts = l2.get("departments", {})
-    if len(depts) < 2:
-        return ""
-
+def employee_type_distribution(data, bu_name, meta):
+    """员工类型分布：VP视角 · 本BU下所有三级部门 100% 堆叠条形图，按二级单位分组"""
+    bu = data["business_units"].get(bu_name, {})
     rows = []
-    for dn, d in depts.items():
-        if d["suppressed"]:
-            continue
-        eng = d["engagement"]
-        gm = d["grand_mean"] or 0
-        # 把敬业拆成 激发(4.0-4.5) / 高效(>=4.5)
-        ratio = max(0.0, min(1.0, (gm - 4.0) / 1.0))
-        high = eng["engaged_pct"] * ratio
-        inspired = eng["engaged_pct"] - high
-        neg = eng["disengaged_pct"]
-        neu = eng["neutral_pct"]
-        total = neg + neu + inspired + high
-        if total <= 0:
-            continue
-        # 归一化到 100%，避免舍入误差
-        neg, neu, inspired, high = [100 * v / total for v in [neg, neu, inspired, high]]
-        rows.append({
-            "name": dn, "n": d["n"], "mean": gm,
-            "neg": neg, "neu": neu, "inspired": inspired, "high": high,
-            "current": dn == dept_name,
-        })
+    for l2n, l2 in sorted(bu.get("l2_units", {}).items()):
+        for dn, d in l2["departments"].items():
+            if d["suppressed"]:
+                continue
+            eng = d["engagement"]
+            gm = d["grand_mean"] or 0
+            # 把敬业拆成 激发(4.0-4.5) / 高效(>=4.5)
+            ratio = max(0.0, min(1.0, (gm - 4.0) / 1.0))
+            high = eng["engaged_pct"] * ratio
+            inspired = eng["engaged_pct"] - high
+            neg = eng["disengaged_pct"]
+            neu = eng["neutral_pct"]
+            total = neg + neu + inspired + high
+            if total <= 0:
+                continue
+            # 归一化到 100%，避免舍入误差
+            neg, neu, inspired, high = [100 * v / total for v in [neg, neu, inspired, high]]
+            rows.append({
+                "name": f"{l2n} / {dn}", "n": d["n"], "mean": gm,
+                "neg": neg, "neu": neu, "inspired": inspired, "high": high,
+            })
 
     if len(rows) < 2:
         return ""
@@ -899,17 +895,13 @@ def employee_type_distribution(data, bu_name, l2_name, dept_name, meta):
 
     # 标题旁的小结论
     top_neg = rows[0]
-    if top_neg["current"]:
-        title_sub = f"本团队消极型员工占比最高（{top_neg['neg']:.0f}%），需优先关注"
-    else:
-        title_sub = f"消极型员工占比最高：{top_neg['name']}（{top_neg['neg']:.0f}%）"
+    title_sub = f"消极型员工占比最高：{top_neg['name']}（{top_neg['neg']:.0f}%）"
 
     colors = {"neg": "#e52529", "neu": "#9ca3af", "inspired": "#5eead4", "high": "#0d9488"}
     labels = {"neg": "消极", "neu": "中立", "inspired": "激发", "high": "高效"}
 
     html_rows = []
     for r in rows:
-        cur_cls = " current" if r["current"] else ""
         segs = []
         for key in ["neg", "neu", "inspired", "high"]:
             v = r[key]
@@ -919,7 +911,7 @@ def employee_type_distribution(data, bu_name, l2_name, dept_name, meta):
         bar = '<div class="etype-bar-wrap">' + "".join(segs) + '</div>'
         neg_cls = " high" if r["neg"] >= 30 else ""
         html_rows.append(
-            f'<div class="etype-row{cur_cls}">'
+            f'<div class="etype-row">'
             f'<div class="etype-name">{esc(r["name"])}<span class="n">n={r["n"]}</span></div>'
             f'{bar}'
             f'<div class="etype-neg{neg_cls}">{r["neg"]:.0f}%</div>'
@@ -934,7 +926,7 @@ def employee_type_distribution(data, bu_name, l2_name, dept_name, meta):
     return (
         f'<div class="etype-chart">'
         f'<div class="etype-head"><div class="etype-title">员工类型分布</div>'
-        f'<div class="etype-sub">{esc(title_sub)} · 按个人均分估算 · 本团队高亮</div></div>'
+        f'<div class="etype-sub">{esc(title_sub)} · 按个人均分估算 · 消极≥30%标红</div></div>'
         f'{"".join(html_rows)}'
         f'<div class="etype-legend">{legend}</div>'
         f'</div>'
@@ -1025,7 +1017,9 @@ def render_vp(data, bu_name, insights):
     body += legend_html(meta)
     body += bu_trait_diagnosis(bu, comp, meta)
     body += cross_dept_common(bu, meta)
-    body += sec_head(4, "逐题得分卡（对比公司整体）")
+    body += sec_head(4, "员工类型分布", "下辖三级部门 · 消极/中立/激发/高效 · 按消极占比降序")
+    body += employee_type_distribution(data, bu_name, meta)
+    body += sec_head(5, "逐题得分卡（对比公司整体）")
     body += question_table(bu, meta, [comp], ["公司整体"]) + legend_html(meta)
     body += footnote(meta)
     return page(f"VP看板-{bu_name}{('-' + period) if period else ''}", body)
@@ -1054,14 +1048,12 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
              '样本&lt;6人时不显示分布，仅显示均值。</div>')
     body += sec_head(1, "诊断洞察", "AI 基于数据的团队判断与建议")
     body += insights_html(insights)
-    body += sec_head(2, "员工类型分布", "同级部门对比 · 本团队高亮")
-    body += employee_type_distribution(data, bu_name, l2_name, dept_name, meta)
-    body += sec_head(3, "优先改善项", "根因假设与1:1对话指南 · 针对本团队薄弱题项")
+    body += sec_head(2, "优先改善项", "根因假设与1:1对话指南 · 针对本团队薄弱题项")
     body += rootcause_conversation(dept, meta, insights)
-    body += sec_head(4, "参考：逐题对比", "团队 vs 二级 / 一级 / 公司 · 四重对照")
+    body += sec_head(3, "参考：逐题对比", "团队 vs 二级 / 一级 / 公司 · 四重对照")
     body += (question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
              + legend_html(meta))
-    body += sec_head(5, "30 / 60 / 90 天行动清单", "按时间盒排优先级 · 30天立即、60天固化、90天复盘")
+    body += sec_head(4, "30 / 60 / 90 天行动清单", "按时间盒排优先级 · 30天立即、60天固化、90天复盘")
     body += action_timeline(insights, dept, meta)
     body += footnote(meta, "经理人看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
     return page(f"经理人看板-{dept_name}{('-' + period) if period else ''}", body)
@@ -1079,8 +1071,8 @@ def render_unified(data, insights):
     mgr_idx_file = f"经理人索引_选择部门{period_suffix}.html"
     cards = [
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、干预优先级矩阵、系统性 vs 局部问题诊断、风险仪表盘", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
-        ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
-        ("👥", "经理人团队报告", "各三级部门深度诊断，含员工类型分布、根因 1:1 对话指南、逐题对比、30/60/90 天行动清单", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
+        ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
+        ("👥", "经理人团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、30/60/90 天行动清单", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
     grid = '<div class="entry-grid">'
     for icon, title, desc, tag, bg, col, href in cards:
