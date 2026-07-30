@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+*.zip
+reports/
+analysis.json
+insights.json
+.DS_Store
+Thumbs.db
