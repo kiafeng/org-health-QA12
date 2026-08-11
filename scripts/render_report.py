@@ -621,6 +621,201 @@ def scatter_matrix(bus, meta):
             f'<div class="legend">气泡大小=人数 · 颜色=健康评级 · 象限按"健康度4.5 / 人数中位数{med_n}"划分</div>')
 
 
+# ---------- VP 看板：经理人效能象限 ----------
+QUADRANT_CFG = {
+    "明星经理": {
+        "color": "#1a7f37", "bg": "#dcfce7", "label": "高分 + 体验一致",
+        "desc": "团队健康且成员体验趋同，可作为标杆复制经验。",
+        "x_gt": True, "y_low": True,
+    },
+    "偏心眼经理": {
+        "color": "#2563eb", "bg": "#dbeafe", "label": "高分 + 体验分化",
+        "desc": "整体得分尚可，但内部体验差异大，需关注两极分化的成员。",
+        "x_gt": True, "y_low": False,
+    },
+    "统一型弱经理": {
+        "color": "#d97706", "bg": "#fef3c7", "label": "低分 + 体验一致",
+        "desc": "团队整体偏低且体验趋同，需从管理机制、资源、流程整体提升。",
+        "x_gt": False, "y_low": True,
+    },
+    "危险经理": {
+        "color": "#dc2626", "bg": "#fee2e2", "label": "低分 + 体验分化",
+        "desc": "团队健康度低且内部意见分歧大，需优先介入、单独辅导。",
+        "x_gt": False, "y_low": False,
+    },
+}
+Y_STD_SCALE = 10.0   # 把 1-5 分的标准差映射到 0-25 的视觉刻度
+Y_STD_THRESHOLD = 20.0  # 对应原始标准差 2.0（接近 5 分制理论上限）
+
+
+def classify_quadrant(deviation, std_scaled):
+    """根据偏离值和缩放后的标准差判断象限"""
+    x_gt = deviation > 0
+    y_low = std_scaled <= Y_STD_THRESHOLD
+    for name, cfg in QUADRANT_CFG.items():
+        if cfg["x_gt"] == x_gt and cfg["y_low"] == y_low:
+            return name
+    return ""
+
+
+def manager_quadrant_html(data, bu_name, meta):
+    """经理人效能象限：仅展示本事业部下属三级部门。
+    横轴=得分偏离公司均值，纵轴=人员间标准差×10，圆圈大小=团队人数。
+    """
+    comp = data["company"]
+    bu = data["business_units"][bu_name]
+    company_mean = comp.get("grand_mean")
+    if company_mean is None:
+        return '<div class="muted">公司均值缺失，无法计算象限</div>'
+
+    # 收集本事业部下所有三级部门
+    items = []
+    for l2n, l2 in bu["l2_units"].items():
+        for dn, d in l2["departments"].items():
+            if d.get("suppressed") or d.get("grand_mean") is None:
+                continue
+            dev = d["grand_mean"] - company_mean
+            std_scaled = (d.get("score_std") or 0) * Y_STD_SCALE
+            quad = classify_quadrant(dev, std_scaled)
+            items.append({
+                "l2": l2n, "dept": dn, "n": d["n"],
+                "mean": d["grand_mean"], "dev": dev,
+                "std": d.get("score_std") or 0,
+                "std_scaled": std_scaled,
+                "quad": quad,
+                "band": d.get("grand_band"),
+            })
+    if not items:
+        return '<div class="muted">本事业部暂无可展示的三级部门数据</div>'
+
+    # 坐标范围
+    devs = [it["dev"] for it in items]
+    x_min = min(-1.0, min(devs) - 0.15)
+    x_max = max(1.0, max(devs) + 0.15)
+    y_max = max(10.0, max(it["std_scaled"] for it in items) * 1.15)
+
+    W, H = 720, 420
+    pad_l, pad_r, pad_t, pad_b = 64, 34, 34, 56
+    pw = W - pad_l - pad_r
+    ph = H - pad_t - pad_b
+
+    def x_pos(v):
+        return pad_l + (v - x_min) / (x_max - x_min) * pw
+
+    def y_pos(v):
+        return pad_t + ph - (v / y_max) * ph
+
+    x0 = x_pos(0)
+    y_thr = y_pos(Y_STD_THRESHOLD)
+
+    # 象限背景
+    quads_bg = (
+        f'<rect x="{pad_l}" y="{pad_t}" width="{x0-pad_l:.1f}" height="{y_thr-pad_t:.1f}" fill="#fef2f2" opacity=".6"/>'
+        f'<rect x="{x0:.1f}" y="{pad_t}" width="{pad_l+pw-x0:.1f}" height="{y_thr-pad_t:.1f}" fill="#eff6ff" opacity=".6"/>'
+        f'<rect x="{pad_l}" y="{y_thr:.1f}" width="{x0-pad_l:.1f}" height="{pad_t+ph-y_thr:.1f}" fill="#fffbeb" opacity=".6"/>'
+        f'<rect x="{x0:.1f}" y="{y_thr:.1f}" width="{pad_l+pw-x0:.1f}" height="{pad_t+ph-y_thr:.1f}" fill="#f0fdf4" opacity=".6"/>'
+    )
+    # 象限标签
+    qlabels = (
+        f'<text x="{pad_l+10}" y="{pad_t+18}" font-size="13" font-weight="700" fill="#dc2626">危险经理</text>'
+        f'<text x="{x0+10}" y="{pad_t+18}" font-size="13" font-weight="700" fill="#2563eb">偏心眼经理</text>'
+        f'<text x="{pad_l+10}" y="{y_thr+18}" font-size="13" font-weight="700" fill="#d97706">统一型弱经理</text>'
+        f'<text x="{x0+10}" y="{y_thr+18}" font-size="13" font-weight="700" fill="#1a7f37">明星经理</text>'
+    )
+    # 参考线
+    dividers = (
+        f'<line x1="{x0:.1f}" y1="{pad_t}" x2="{x0:.1f}" y2="{pad_t+ph}" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="6 4"/>'
+        f'<line x1="{pad_l}" y1="{y_thr:.1f}" x2="{pad_l+pw}" y2="{y_thr:.1f}" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="6 4"/>'
+    )
+    # 坐标轴刻度
+    x_ticks = [x_min, 0, x_max]
+    x_axis = "".join(
+        f'<line x1="{x_pos(t):.1f}" y1="{pad_t+ph}" x2="{x_pos(t):.1f}" y2="{pad_t+ph+4}" stroke="#9ca3af"/>'
+        f'<text x="{x_pos(t):.1f}" y="{pad_t+ph+18}" text-anchor="middle" font-size="11" fill="#6b7280">{t:+.1f}</text>'
+        for t in x_ticks
+    )
+    y_ticks = [0, Y_STD_THRESHOLD, y_max]
+    y_axis = "".join(
+        f'<line x1="{pad_l-4}" y1="{y_pos(t):.1f}" x2="{pad_l}" y2="{y_pos(t):.1f}" stroke="#9ca3af"/>'
+        f'<text x="{pad_l-8}" y="{y_pos(t)+4:.1f}" text-anchor="end" font-size="11" fill="#6b7280">{t:.0f}</text>'
+        for t in y_ticks
+    )
+    axis_titles = (
+        f'<text x="{pad_l+pw/2:.1f}" y="{H-8}" text-anchor="middle" font-size="12" fill="#6b7280">得分偏离公司均值（X=0 为公司均值）→</text>'
+        f'<text x="16" y="{pad_t+ph/2:.1f}" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90 16 {pad_t+ph/2:.1f})">↑ 人员间标准差（×10）</text>'
+    )
+    # 气泡
+    max_n = max(it["n"] for it in items)
+    dots = ""
+    for it in items:
+        cx, cy = x_pos(it["dev"]), y_pos(it["std_scaled"])
+        cfg = QUADRANT_CFG[it["quad"]]
+        rad = 10 + (it["n"] / max_n) * 18
+        label_y = cy - rad - 6
+        dots += (
+            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rad:.1f}" fill="{cfg["color"]}" fill-opacity=".75" stroke="#fff" stroke-width="2"/>'
+            f'<text x="{cx:.1f}" y="{cy+4:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">{it["n"]}</text>'
+            f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151">{esc(it["dept"])}</text>'
+            f'<text x="{cx:.1f}" y="{cy+rad+14:.1f}" text-anchor="middle" font-size="10" fill="#6b7280">{it["mean"]:.2f}分 · 标准差{it["std"]:.2f}</text>'
+        )
+    svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
+           f'{quads_bg}{dividers}{qlabels}{x_axis}{y_axis}{axis_titles}{dots}</svg>')
+
+    # 四象限摘要卡片
+    quad_cards = []
+    for name, cfg in QUADRANT_CFG.items():
+        members = [it for it in items if it["quad"] == name]
+        if members:
+            member_lines = " · ".join(f"{it['dept']}（{it['n']}人, {it['mean']:.2f}分）" for it in members[:3])
+            if len(members) > 3:
+                member_lines += f" 等{len(members)}个"
+        else:
+            member_lines = "暂无"
+        quad_cards.append(
+            f'<div style="flex:1;min-width:160px;background:{cfg["bg"]};border:1px solid {cfg["color"]}30;border-radius:12px;padding:14px">'
+            f'<div style="font-size:14px;font-weight:700;color:{cfg["color"]};margin-bottom:4px">{name}</div>'
+            f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px">{cfg["label"]}<br/>{cfg["desc"]}</div>'
+            f'<div style="font-size:12px;color:#374151;line-height:1.5">{esc(member_lines)}</div>'
+            f'</div>'
+        )
+    cards_html = f'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:18px">{"".join(quad_cards)}</div>'
+
+    # 三级部门象限解读表
+    rows = []
+    for it in sorted(items, key=lambda x: (x["dev"], -x["std_scaled"])):
+        cfg = QUADRANT_CFG[it["quad"]]
+        rows.append(
+            f'<tr>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600">{esc(it["dept"])}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["n"]}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["dev"]:+.2f}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["std"]:.2f}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center"><span style="color:{cfg["color"]};font-weight:700">{it["quad"]}</span></td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);color:#4b5563;font-size:13px">{esc(cfg["desc"])}</td>'
+            f'</tr>'
+        )
+    table_html = (
+        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">三级部门象限解读</h4>'
+        f'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+        f'<thead><tr style="background:#f3f4f6">'
+        f'<th style="padding:10px 12px;text-align:left;font-weight:700">三级部门</th>'
+        f'<th style="padding:10px 12px;text-align:center;font-weight:700">人数</th>'
+        f'<th style="padding:10px 12px;text-align:center;font-weight:700">偏离值</th>'
+        f'<th style="padding:10px 12px;text-align:center;font-weight:700">标准差</th>'
+        f'<th style="padding:10px 12px;text-align:center;font-weight:700">象限定位</th>'
+        f'<th style="padding:10px 12px;text-align:left;font-weight:700">解读与建议</th>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+    return (
+        f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)">'
+        f'{svg}'
+        f'<div class="legend">仅展示本事业部下属三级部门 · 横轴=得分偏离公司均值 · 纵轴=人员间标准差×10 · 圆圈大小=团队人数 · X=0 虚线为公司均值参考线，Y={Y_STD_THRESHOLD:.0f} 为标准差固定阈值</div>'
+        f'{cards_html}{table_html}'
+        f'</div>'
+    )
+
+
 def diagnosis_bars(company, meta):
     """系统性vs局部问题：横向条形图，比文字卡片更直观。低饱和同色系，按题号排序。"""
     qd = company.get("question_diagnosis", {})
@@ -1017,9 +1212,11 @@ def render_vp(data, bu_name, insights):
     body += legend_html(meta)
     body += bu_trait_diagnosis(bu, comp, meta)
     body += cross_dept_common(bu, meta)
-    body += sec_head(4, "员工类型分布", "下辖三级部门 · 消极/中立/激发/高效 · 按消极占比降序")
+    body += sec_head(4, "经理人效能象限", "本事业部下属三级部门负责人 · 偏离公司均值 vs 人员间标准差")
+    body += manager_quadrant_html(data, bu_name, meta)
+    body += sec_head(5, "员工类型分布", "下辖三级部门 · 消极/中立/激发/高效 · 按消极占比降序")
     body += employee_type_distribution(data, bu_name, meta)
-    body += sec_head(5, "逐题得分卡（对比公司整体）")
+    body += sec_head(6, "逐题得分卡（对比公司整体）")
     body += question_table(bu, meta, [comp], ["公司整体"]) + legend_html(meta)
     body += footnote(meta)
     return page(f"VP看板-{bu_name}{('-' + period) if period else ''}", body)

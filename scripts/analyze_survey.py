@@ -15,6 +15,7 @@
 """
 import argparse
 import json
+import statistics
 import sys
 from pathlib import Path
 
@@ -217,6 +218,11 @@ def agg_unit(members, min_n):
         "disengaged_pct": r2(100 * disengaged / n),
         "ratio": r2(engaged / disengaged) if disengaged else None,  # 敬业:怠工比
     }
+    # 人员间标准差（个人均分的标准差），用于 VP 看板「经理人效能象限」
+    pms = [sum(v for v in m["scores"].values() if v is not None) /
+           sum(1 for v in m["scores"].values() if v is not None)
+           for m in members]
+    unit["score_std"] = r2(statistics.stdev(pms)) if len(pms) > 1 else 0.0
     # 最高/最低题项
     ranked = sorted([q for q in QPRESENT if q_stats[q]["mean"] is not None],
                     key=lambda q: q_stats[q]["mean"])
