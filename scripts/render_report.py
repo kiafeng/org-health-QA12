@@ -644,8 +644,8 @@ QUADRANT_CFG = {
         "x_gt": False, "y_low": False,
     },
 }
-Y_STD_SCALE = 10.0   # 把 1-5 分的标准差映射到 0-25 的视觉刻度
-Y_STD_THRESHOLD = 20.0  # 对应原始标准差 2.0（接近 5 分制理论上限）
+Y_STD_SCALE = 20.0   # 把 1-5 分的标准差映射到 0-40 的视觉刻度（与 0-100 分制口径一致）
+Y_STD_THRESHOLD = 20.0  # 对应原始标准差 1.0，作为"体验分化"阈值
 
 
 def classify_quadrant(deviation, std_scaled):
