@@ -1184,7 +1184,7 @@ def diagnosis_bars(company, meta):
     return "".join(rows)
 
 
-def vp_hero(bu, meta, all_bus, bu_name):
+def vp_hero(bu, meta, all_bus, bu_name, comp):
     """VP看板 Hero：小仪表盘 + 本部定位 + 关键指标"""
     eng = bu["engagement"]
     pctl = bu.get("percentile_vs_bus")
@@ -1209,16 +1209,25 @@ def vp_hero(bu, meta, all_bus, bu_name):
              f' stroke-dasharray="{2*3.14159*48:.1f}" stroke-dashoffset="{2*3.14159*48*(1-min(1,max(0,score/5))):.1f}" transform="rotate(-90 60 60)"/>'
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
+    ceng = comp["engagement"]
+    total = meta.get("total_employees")
+    if not total or total <= 0:
+        total = meta.get("total_respondents", 0)
+    n_pct = round(bu["n"] / total * 100, 1) if total > 0 else 0.0
     stats = [
-        ("受访人数", str(bu["n"]), "有效问卷", "#2563eb", ""),
+        ("受访人数", str(bu["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
         ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed", "textual"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981", ""),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
+         "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
+         "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
     ]
     stats_html = "".join(
-        f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
-        f'<div class="hs-value {cls}" style="color:{c}">{v}</div>'
-        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, cls in stats)
+        f'<div class="hero-stat">{_help_tip(tip)}'
+        f'<div class="hs-label">{esc(l)}</div>'
+        f'<div class="hs-value" style="color:{c}">{v}</div>'
+        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, tip in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
             f'<div>{gauge}</div><div>{pos_html}</div>'
             f'<div class="hero-stats">{stats_html}</div></div>')
@@ -1573,32 +1582,27 @@ def render_vp(data, bu_name, insights):
     n_dept = sum(len(l2["departments"]) for l2 in bu["l2_units"].values())
     body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
-    body += vp_hero(bu, meta, data["business_units"], bu_name)
-    # 2×2 卡片网格
+    body += vp_hero(bu, meta, data["business_units"], bu_name, comp)
+    # 并排：四维度得分 + 二级部门维度数据对比
     body += "<div class='vp-grid'>"
-    # 左上：组织健康阶梯
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
              "<small>本事业部 vs 公司（5 分制）</small></div>" +
              dimension_radar(bu, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
-    # 右上：经理人效能象限（仅图）
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>经理人效能象限 "
-             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
-             f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
-    # 左下：二级部门维度数据对比（仅二级，不展开三级）
     tree = [(f"{l2n}", l2, l2.get("percentile_vs_l2"), 0, None)
             for l2n, l2 in sorted(bu["l2_units"].items(),
                                   key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))]
     body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级部门维度数据对比 "
              f"<small>含主管效能标签</small></div>"
              f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级部门')}</div></div>")
-    # 右下：员工类型分布
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>员工类型分布 "
+    body += "</div>"
+    # 以下模块不再并排，单列通栏
+    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>经理人效能象限 "
+             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
+    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>员工类型分布 "
              f"<small>消极/中立/激发/高效 · 按消极占比降序</small></div>"
              f"{employee_type_distribution(data, bu_name, meta)}</div>")
-    body += "</div>"
-    # 通栏：员工群体洞察（新增）
     body += vp_group_insights(bu, meta)
-    # 通栏：管理者流失风险分析（新增）
     body += vp_manager_risk(bu, meta)
     # 通栏：VP 行动建议
     body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>VP 行动建议</div>"
@@ -1835,41 +1839,41 @@ def main():
 # ---------- VP 看板新增模块：员工群体洞察 / 管理者流失风险 ----------
 
 def _group_bar_chart(title, grp):
-    """单一人口学维度的健康度横向条形图（0-100）。"""
+    """单一人口学维度的均分横向条形图（5 分制，与全篇统一）。"""
     items = sorted(((k, v) for k, v in grp.items()
-                    if v.get("health_index") is not None),
-                   key=lambda kv: kv[1]["health_index"])
+                    if v.get("mean") is not None),
+                   key=lambda kv: kv[1]["mean"])
     rows = []
     for k, v in items:
-        hi = v["health_index"]
-        c = "#ef4444" if hi < 60 else ("#f59e0b" if hi < 80 else "#10b981")
-        w = max(hi, 1)
+        score = v["mean"]
+        c = "#ef4444" if score < 3.5 else ("#f59e0b" if score < 4.0 else "#10b981")
+        w = max(score / 5 * 100, 1)
         rows.append(
             f'<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">'
             f'<span style="width:88px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{esc(k)}</span>'
             f'<span style="position:relative;flex:1;height:14px;background:#f0f2f4;border-radius:7px">'
             f'<span style="position:absolute;left:0;top:0;bottom:0;width:{w:.1f}%;background:{c};border-radius:7px"></span></span>'
-            f'<span style="width:40px;text-align:right;color:{c};font-weight:700">{hi:.0f}</span>'
+            f'<span style="width:40px;text-align:right;color:{c};font-weight:700">{score:.2f}</span>'
             f'<span style="width:46px;color:#9ca3af">n={v.get("n")}</span></div>')
     return (f'<div style="margin:4px 0"><div style="font-size:13px;font-weight:600;color:#374151;'
             f'margin-bottom:5px">{esc(title)}</div>{"".join(rows)}</div>')
 
 
 def _group_insight_text(demo):
-    """跨维度找出健康度最低的群体，生成关键洞察。"""
+    """跨维度找出均分最低的群体，生成关键洞察。"""
     name_map = {"gender": "性别", "level": "职级", "tenure": "司龄", "perf": "绩效"}
     lowest = []
     for key, g in demo.items():
         for k, v in g.items():
-            hi = v.get("health_index")
-            if hi is not None:
-                lowest.append((hi, name_map.get(key, key), k, v.get("n")))
+            score = v.get("mean")
+            if score is not None:
+                lowest.append((score, name_map.get(key, key), k, v.get("n")))
     if not lowest:
         return ""
     lowest.sort()
-    hi, dim, k, n = lowest[0]
-    return (f'<div class="insight" style="border-left-color:#ef4444">健康度最低的群体为'
-            f'<b>「{esc(k)}」</b>（{esc(dim)}，健康度 {hi:.0f}，n={n}），'
+    score, dim, k, n = lowest[0]
+    return (f'<div class="insight" style="border-left-color:#ef4444">均分最低的群体为'
+            f'<b>「{esc(k)}」</b>（{esc(dim)}，均分 {score:.2f}，n={n}），'
             f'建议优先排查其管理支持与团队归属短板，针对性补强。</div>')
 
 
@@ -1886,18 +1890,18 @@ def vp_group_insights(bu, meta):
         return ""
     ins = _group_insight_text(demo)
     cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
-    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>员工群体洞察 "
-            f"<small>各群体健康度（0-100）</small></div>"
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>本事业部员工群体洞察 "
+            f"<small>各群体均分（5 分制 · 仅本事业部员工）</small></div>"
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
 def vp_manager_risk(bu, meta):
-    """管理者流失风险分析：指标卡 + 高危名单表（P7+ 管理者，按健康度升序）。"""
-    mgr = bu.get("managers") or {"summary": {}, "managers": []}
+    """管理者流失风险分析：仅展示本事业部 P7+ 管理者汇总指标，不展示个人信息。"""
+    mgr = bu.get("managers") or {"summary": {}}
     s = mgr.get("summary") or {}
-    ms = mgr.get("managers") or []
-    rc = {"高危": "#ef4444", "需关注": "#f59e0b", "稳定": "#10b981"}
+    total = s.get("total", 0)
     cards = [
+        ("P7+ 管理者总数", total, "#2563eb"),
         ("高危管理者", s.get("high_risk", 0), "#ef4444"),
         ("需关注", s.get("watch", 0), "#f59e0b"),
         ("稳定", s.get("stable", 0), "#10b981"),
@@ -1906,22 +1910,10 @@ def vp_manager_risk(bu, meta):
     cards_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div></div>' for l, v, c in cards)
-    if not ms:
-        table = '<div class="muted">本事业部暂无 P7+ 管理者数据</div>'
-    else:
-        rows = "".join(
-            f'<tr><td>{esc(m.get("email") or "")}</td><td>{esc(m.get("level") or "")}</td>'
-            f'<td>{esc(m.get("tenure") or "")}</td><td>{esc(m.get("perf") or "")}</td>'
-            f'<td style="text-align:right;font-weight:700">{m.get("health_index")}</td>'
-            f'<td style="text-align:center;color:{rc.get(m.get("risk"), "#6b7280")};font-weight:700">{esc(m.get("risk"))}</td></tr>'
-            for m in ms)
-        table = (f'<table class="db-table"><thead><tr>'
-                 f'<th>管理者</th><th>职级</th><th>司龄</th><th>绩效</th>'
-                 f'<th style="text-align:right">敬业度</th><th style="text-align:center">风险</th>'
-                 f'</tr></thead><tbody>{rows}</tbody></table>')
+    note = '<div class="muted" style="font-size:12px">仅汇总本事业部 P7+ 管理者风险分布，不展示具体员工信息。</div>'
     return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>管理者流失风险分析 "
-            f"<small>P7+ 管理者 · 按健康度升序</small></div>"
-            f'<div class="hero-stats" style="margin:4px 0 12px 0">{cards_html}</div>{table}</div>')
+            f"<small>本事业部 P7+ 管理者汇总 · 不展示个人信息</small></div>"
+            f'<div class="hero-stats" style="margin:4px 0 12px 0">{cards_html}</div>{note}</div>')
 
 
 if __name__ == "__main__":
