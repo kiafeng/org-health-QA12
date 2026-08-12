@@ -28,6 +28,7 @@ insights.json 结构:
 import argparse
 import html as _html
 import json
+import math
 import re
 from pathlib import Path
 import statistics
@@ -35,7 +36,10 @@ import statistics
 BAND_COLOR = {"优势": "#1a7f37", "良好": "#57a05c", "关注": "#d4a72c", "预警": "#cf222e", None: "#8b949e"}
 BAND_BG = {"优势": "#dcf2e3", "良好": "#eaf5eb", "关注": "#fcf3d7", "预警": "#fde8e9", None: "#f0f2f4"}
 DIM_ORDER = ["成长发展", "团队归属", "管理支持", "基本需求"]  # 阶梯自上而下
-DIM_COLOR = {"基本需求": "#6c8a96", "管理支持": "#8a8aa6", "团队归属": "#c98a8a", "成长发展": "#c4a06a"}
+
+# 默认行业常模（5 分制）。当数据/配置未提供常模时作为占位参考；用户可通过 meta["benchmark"] 覆盖。
+DEFAULT_BENCHMARK = {"基本需求": 4.05, "管理支持": 3.85, "团队归属": 3.75, "成长发展": 3.65}
+DIM_COLOR = {"基本需求": "#a7c0cb", "管理支持": "#bbbbe0", "团队归属": "#e2bcbc", "成长发展": "#e3cf9c"}
 SCALE_MAX = 5.0
 
 # 经理人看板：题项三块分组（按"经理人能直接动什么"重组，而非问卷原始四维度）
@@ -163,28 +167,28 @@ def css():
     return """
 :root{--ink:#111827;--sub:#6b7280;--line:#e5e7eb;--bg:#f3f4f6;--card:#ffffff;--accent:#2563eb;--shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--shadow-lg:0 4px 16px rgba(0,0,0,.08)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;font-size:14px}
-.page{max-width:1120px;margin:0 auto;padding:28px 32px 64px}
-.report-head{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border-radius:16px;padding:32px 36px;margin-bottom:24px;box-shadow:var(--shadow-lg)}
-.report-head h1{font-size:26px;font-weight:700;margin-bottom:6px;letter-spacing:.5px}
+body{font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5;font-size:14px}
+.page{max-width:1120px;margin:0 auto;padding:18px 22px 44px}
+.report-head{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border-radius:14px;padding:22px 26px;margin-bottom:18px;box-shadow:var(--shadow-lg)}
+.report-head h1{font-size:23px;font-weight:700;margin-bottom:4px;letter-spacing:.5px}
 .report-head .sub{opacity:.8;font-size:13px}
 .report-head .tag{display:inline-block;background:rgba(255,255,255,.15);border-radius:20px;padding:3px 14px;font-size:12px;margin-right:8px;margin-top:12px;backdrop-filter:blur(4px)}
 .report-head .chain{font-size:12px;color:#fff;opacity:.85;margin-top:8px}
-.sec-head{display:flex;align-items:center;gap:10px;margin:36px 0 14px}
+.sec-head{display:flex;align-items:center;gap:10px;margin:20px 0 9px}
 .sec-head .sec-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;flex-shrink:0}
 .sec-head h2{font-size:18px;font-weight:700;border:none;padding:0;margin:0}
 .sec-head .sec-sub{font-size:12px;color:var(--sub);margin-left:4px}
-h2{font-size:18px;margin:36px 0 14px;padding-left:12px;border-left:4px solid var(--accent);font-weight:700}
+h2{font-size:17px;margin:20px 0 9px;padding-left:12px;border-left:4px solid var(--accent);font-weight:700}
 h3{font-size:14px;margin:16px 0 8px;color:var(--sub);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);transition:box-shadow .2s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--shadow);transition:box-shadow .2s}
 .card:hover{box-shadow:var(--shadow-lg)}
 .card .label{font-size:12px;color:var(--sub);margin-bottom:6px;font-weight:500}
 .card .value{font-size:30px;font-weight:800;letter-spacing:-.5px}
 .card .foot{font-size:12px;color:var(--sub);margin-top:4px}
 table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
-th{background:#f9fafb;font-size:12px;color:var(--sub);font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
-td{padding:10px 12px;border-top:1px solid #f3f4f6;font-size:13px;vertical-align:middle}
+th{background:#f9fafb;font-size:12px;color:var(--sub);font-weight:600;padding:7px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+td{padding:7px 10px;border-top:1px solid #f3f4f6;font-size:12.5px;vertical-align:middle}
 tr:hover td{background:#f9fafb}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .center{text-align:center}
@@ -193,49 +197,84 @@ tr:hover td{background:#f9fafb}
 .chip{display:inline-block;border-radius:20px;padding:2px 12px;font-size:12px;font-weight:600;white-space:nowrap}
 .muted{color:#9ca3af}
 .qtext{color:var(--sub);font-size:12px}
-.ladder{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px 0 6px}
+.ladder{display:flex;flex-direction:column;align-items:center;gap:6px;margin:10px 0 4px}
 .ladder .step{display:flex;align-items:center;gap:16px}
 .ladder .block{color:#fff;border-radius:10px;padding:12px 20px;text-align:center;box-shadow:var(--shadow)}
 .ladder .block .dn{font-size:14px;font-weight:600}
 .ladder .block .dv{font-size:22px;font-weight:800}
 .ladder .side{width:300px;font-size:12px;color:var(--sub)}
 .heat-cell{text-align:center;font-weight:600;border-radius:6px;padding:5px 0;font-size:13px}
-.insight{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:18px 22px;margin-bottom:14px;box-shadow:var(--shadow)}
+.insight{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:13px 17px;margin-bottom:10px;box-shadow:var(--shadow)}
 .insight ul{margin:8px 0 0 18px}
 .insight li{margin:5px 0}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.hl{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;box-shadow:var(--shadow)}
+.vp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;align-items:start}
+.vp-cell.vp-span{grid-column:1/-1}
+.vp-cell{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 18px;box-shadow:var(--shadow);overflow:hidden}
+.vp-cell .ct{font-size:15px;font-weight:700;color:#1f2937;margin:0 0 10px 0;display:flex;align-items:center;gap:7px}
+.vp-cell .ct small{font-weight:400;font-size:11px;color:var(--sub)}
+.vp-cell .ct .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.vp-cell .ladder{gap:10px 0;padding:4px 0;display:grid;grid-template-columns:1fr 210px;align-items:center}
+.vp-cell .ladder .step{display:grid;grid-template-columns:1fr 210px;gap:16px;align-items:center;width:100%;grid-column:1/-1}
+.vp-cell .ladder .side{width:210px;grid-column:2;text-align:left;font-size:12px;color:var(--sub);line-height:1.55;display:flex;flex-direction:column;justify-content:center}
+.vp-cell .ladder .side b{color:#1f2937;font-size:13px;margin-bottom:3px}
+.vp-cell .ladder .block{grid-column:1;justify-self:center;max-width:100%;width:auto;margin:0;padding:9px 14px;box-sizing:border-box}
+.vp-cell .ladder .block .dn{font-size:13px}
+.vp-cell .ladder .block .dv{font-size:20px}
+.ladder--inline .step{display:flex;justify-content:center;margin:0}
+.ladder--inline .block{display:flex;flex-direction:column;align-items:center;text-align:center;gap:1px;padding:10px 14px;max-width:100%;box-sizing:border-box;color:#2f3b45}
+.ladder--inline .block .dn{color:#1f2937}
+.ladder--inline .block .dv{color:#1f2937}
+.ladder--inline .block .bcore{font-size:12px;font-weight:600;opacity:1;margin-top:3px;line-height:1.35;color:#374151}
+.ladder--inline .block .bqs{font-size:11px;opacity:1;line-height:1.45;margin-top:1px;color:#52606d}
+.ladder--inline .block .chip{background:rgba(255,255,255,.82);color:#1f2937;border:none;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.vp-cell .ladder--inline{gap:8px 0;display:block;padding:4px 0}
+.vp-cell .ladder--inline .step{grid-template-columns:none;gap:0}
+.vp-cell .ladder--inline .block{justify-self:center;grid-column:auto}
+.vp-wide{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;box-shadow:var(--shadow);margin:16px 0}
+.vp-wide .ct{font-size:16px;font-weight:700;color:#1f2937;margin:0 0 14px 0;display:flex;align-items:center;gap:7px}
+.vp-wide .ct .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.vp-actions{margin:0;padding-left:20px}
+.vp-actions li{margin:8px 0;font-size:14px;line-height:1.65;color:#374151}
+.vfold{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);margin:14px 0;overflow:hidden}
+.vfold>summary{font-size:15px;font-weight:700;color:#1f2937;padding:14px 18px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between}
+.vfold>summary::-webkit-details-marker{display:none}
+.vfold>summary::after{content:"▾";color:var(--sub);transition:transform .2s}
+.vfold[open]>summary::after{transform:rotate(180deg)}
+.vfold>summary:hover{background:#f9fafb}
+.vfold .vfold-body{padding:4px 18px 18px 18px}
+.hl{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--shadow)}
 .hl .ttl{font-size:13px;font-weight:700;margin-bottom:8px}
-.footnote{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:11px;color:#9ca3af;line-height:1.8}
-.legend{font-size:12px;color:var(--sub);margin:8px 0 14px}
+.footnote{margin-top:26px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:#9ca3af;line-height:1.8}
+.legend{font-size:12px;color:var(--sub);margin:6px 0 10px}
 .legend .chip{margin-right:6px}
-.matrix{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
-.qcell{border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-height:96px;box-shadow:var(--shadow)}
+.matrix{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.qcell{border:1px solid var(--line);border-radius:10px;padding:13px 15px;min-height:84px;box-shadow:var(--shadow)}
 .qcell h4{font-size:13px;font-weight:700;margin-bottom:8px}
 .qcell .bu-chip{display:inline-block;background:#f9fafb;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;margin:3px 4px 3px 0}
 .axis-lbl{font-size:11px;color:var(--sub);text-align:center;margin:4px 0 6px}
 .blocks{display:grid;grid-template-columns:1fr;gap:14px}
-.block-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;border-left:4px solid var(--accent);box-shadow:var(--shadow)}
+.block-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;border-left:4px solid var(--accent);box-shadow:var(--shadow)}
 .block-card h4{font-size:14px;font-weight:700;margin-bottom:2px}
 .block-card .bdesc{font-size:12px;color:var(--sub);margin-bottom:10px}
 .block-card table{border:none;box-shadow:none}
 .block-card td{border:none;border-bottom:1px solid #f3f4f6}
 .timeline{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-.tl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+.tl-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
 .tl-card .tl-h{font-size:13px;font-weight:700;margin-bottom:8px}
 .tl-card ul{margin-left:16px}
 .tl-card li{margin:4px 0;font-size:13px}
 .watermark{display:inline-block;background:#fef3c7;color:#92400e;border:1px dashed #f59e0b;border-radius:6px;padding:2px 10px;font-size:11px;margin-left:8px}
 .dist-stack{display:inline-flex;height:14px;border-radius:4px;overflow:hidden;vertical-align:middle}
 .dist-stack div{height:100%}
-.pos-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin-bottom:14px;box-shadow:var(--shadow)}
+.pos-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:10px;box-shadow:var(--shadow)}
 .pos-card .posv{font-size:24px;font-weight:800}
 .privacy-note{background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;font-size:12px;color:#92400e;margin:12px 0}
 .entry-head{text-align:center;padding:36px 20px 8px;margin-bottom:8px}
 .entry-head h1{font-size:28px;font-weight:800;letter-spacing:-.5px;color:var(--ink)}
 .entry-head .sub{font-size:14px;color:var(--sub);margin-top:8px}
 .entry-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:28px 0}
-.entry-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px 26px;box-shadow:var(--shadow);transition:all .2s;text-decoration:none;color:inherit;display:flex;flex-direction:column;min-height:200px;cursor:pointer}
+.entry-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);transition:all .2s;text-decoration:none;color:inherit;display:flex;flex-direction:column;min-height:170px;cursor:pointer}
 .entry-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px)}
 .entry-icon{font-size:38px;line-height:1;margin-bottom:14px}
 .entry-ctitle{font-size:16px;font-weight:700;margin-bottom:8px;color:var(--ink)}
@@ -248,25 +287,25 @@ tr:hover td{background:#f9fafb}
 .entry-mini .em-sub{font-size:12px;color:var(--sub)}
 .entry-mini .em-stats{display:flex;gap:14px;margin-top:10px;font-size:12px;color:var(--sub)}
 .entry-mini .em-stats span{font-weight:700;color:var(--ink)}
-.entry-section{display:none;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-top:16px;box-shadow:var(--shadow)}
+.entry-section{display:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-top:12px;box-shadow:var(--shadow)}
 .entry-section:target{display:block}
-@media (max-width:780px){.entry-grid{grid-template-columns:1fr}}
-.hero-banner{display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 32px;box-shadow:var(--shadow-lg);margin-bottom:8px}
-.hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:20px}
+@media (max-width:780px){.entry-grid{grid-template-columns:1fr}.two-col{grid-template-columns:1fr}.vp-grid{grid-template-columns:1fr}.vp-cell .ladder .step{grid-template-columns:1fr;gap:6px}.vp-cell .ladder .side{width:auto;text-align:center;grid-column:auto}.vp-cell .ladder .block{justify-self:stretch;grid-column:auto}}
+.hero-banner{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 24px;box-shadow:var(--shadow-lg);margin-bottom:8px}
+.hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
 .hero-stat{text-align:left}
 .hero-stat .hs-label{font-size:12px;color:var(--sub);margin-bottom:4px}
 .hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}
 .hero-stat .hs-foot{font-size:11px;color:var(--sub);margin-top:2px}
 .risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:14px 0}
-.risk-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);border-top:4px solid #ef4444}
+.risk-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);border-top:4px solid #ef4444}
 .risk-card .rc-label{font-size:12px;color:var(--sub);margin-bottom:6px}
 .risk-card .rc-value{font-size:32px;font-weight:800;color:#ef4444;letter-spacing:-1px}
 .risk-card .rc-foot{font-size:11px;color:var(--sub);margin-top:4px}
-.etype-chart{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 26px;box-shadow:var(--shadow);margin:14px 0}
+.etype-chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);margin:10px 0}
 .etype-head{margin-bottom:16px}
 .etype-title{font-size:16px;font-weight:700}
 .etype-sub{font-size:12px;color:var(--sub);margin-top:2px}
-.etype-row{display:grid;grid-template-columns:170px 1fr 60px;gap:14px;align-items:center;padding:9px 10px;border-bottom:1px solid #f3f4f6}
+.etype-row{display:grid;grid-template-columns:170px 1fr 60px;gap:12px;align-items:center;padding:7px 8px;border-bottom:1px solid #f3f4f6}
 .etype-row:last-child{border-bottom:none}
 .etype-row.current{background:#eff6ff;border-radius:8px}
 .etype-name{font-size:13px;font-weight:600}
@@ -279,12 +318,17 @@ tr:hover td{background:#f9fafb}
 .etype-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;font-size:12px;color:var(--sub)}
 .etype-legend span{display:inline-flex;align-items:center;gap:6px}
 .etype-dot{width:12px;height:12px;border-radius:3px}
-.qbar-row{display:grid;grid-template-columns:140px 1fr 50px 90px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6}
+.qbar-row{display:grid;grid-template-columns:140px 1fr 50px 90px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6}
 .qbar-row:last-child{border:none}
 .qbar-label{font-size:13px;font-weight:500}
 .qbar-track{height:24px;background:#f3f4f6;border-radius:6px;overflow:hidden;position:relative}
 .qbar-fill{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:8px;color:#fff;font-size:11px;font-weight:600}
 .qbar-score{font-size:14px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.radar-wrap{width:100%}
+.radar-legend{display:flex;justify-content:center;gap:18px;margin-top:8px;font-size:12px;color:#4b5563;flex-wrap:wrap}
+.radar-legend span{display:inline-flex;align-items:center;gap:6px}
+.radar-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;flex:none}
+.radar-src{font-size:11px;color:#9ca3af;text-align:center;margin-top:6px;line-height:1.5}
 @media print{body{background:#fff}.page{padding:10mm}.report-head,.hero-banner,.card,.insight,.hl,.qcell,.block-card,.tl-card,.pos-card,.risk-card{box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 """
@@ -325,13 +369,15 @@ def meta_band_foot(unit, sup):
     return f'满分 5 分 · {band_chip(unit["grand_band"])}'
 
 
-def ladder_html(unit, meta):
-    """盖洛普式四层阶梯金字塔。色块宽度随维度均值动态变化：分数越高色块越长。"""
+def ladder_html(unit, meta, inline_text=False):
+    """盖洛普式四层阶梯金字塔。色块宽度随维度均值动态变化：分数越高色块越长。
+    inline_text=True 时把核心问题/题目/评级放到色块内部，适合窄卡片。"""
     sup = unit["suppressed"]
     max_w = 500
     min_w = 120
     widths = {"成长发展": 200, "团队归属": 300, "管理支持": 400, "基本需求": 500}
     steps = []
+    cls = "ladder ladder--inline" if inline_text else "ladder"
     for d in DIM_ORDER:
         if not meta["dimensions"][d]["questions"]:
             continue
@@ -345,13 +391,153 @@ def ladder_html(unit, meta):
             w = widths[d]
         else:
             w = max(min_w, int(dv["mean"] / 5.0 * max_w))
-        steps.append(
-            f'<div class="step">'
-            f'<div class="block" style="width:{w}px;background:{DIM_COLOR[d]}">'
-            f'<span class="dn">{esc(d)}</span> <span class="dv">{mean_s}</span> {delta_s}</div>'
-            f'<div class="side"><b>{esc(core)}</b><br>{esc(qs)} · {band_chip(dv["band"], sup)}</div>'
-            f'</div>')
-    return f'<div class="ladder">{"".join(steps)}</div>'
+        if inline_text:
+            steps.append(
+                f'<div class="step">'
+                f'<div class="block" style="width:{w}px;background:{DIM_COLOR[d]}">'
+                f'<div class="btitle"><span class="dn">{esc(d)}</span> <span class="dv">{mean_s}</span> {delta_s}</div>'
+                f'<div class="bcore">{esc(core)}</div>'
+                f'<div class="bqs">{esc(qs)} · {band_chip(dv["band"], sup)}</div>'
+                f'</div></div>')
+        else:
+            steps.append(
+                f'<div class="step">'
+                f'<div class="block" style="width:{w}px;background:{DIM_COLOR[d]}">'
+                f'<span class="dn">{esc(d)}</span> <span class="dv">{mean_s}</span> {delta_s}</div>'
+                f'<div class="side"><b>{esc(core)}</b><br>{esc(qs)} · {band_chip(dv["band"], sup)}</div>'
+                f'</div>')
+    return f'<div class="{cls}">{"".join(steps)}</div>'
+
+
+def dimension_radar(unit, meta, compare_unit=None, compare_label=None, benchmark=None, benchmark_label="行业常模", benchmark_source=None):
+    """四维度得分雷达图（SVG）。CEO 用于公司 vs 行业常模，经理人用于本部门 vs 公司。"""
+    dims = ["基本需求", "成长发展", "团队归属", "管理支持"]
+    sup = unit.get("suppressed", False)
+    values = []
+    for d in dims:
+        dv = unit["dimensions"].get(d, {})
+        values.append(None if sup or dv.get("mean") is None else dv["mean"])
+
+    comp_values = []
+    if compare_unit and not compare_unit.get("suppressed", False):
+        for d in dims:
+            dv = compare_unit["dimensions"].get(d, {})
+            comp_values.append(dv.get("mean"))
+    else:
+        comp_values = [None] * 4
+
+    bench_values = []
+    if benchmark:
+        for d in dims:
+            bench_values.append(benchmark.get(d))
+    else:
+        bench_values = [None] * 4
+
+    W, H = 520, 340
+    cx, cy = W / 2, H / 2 + 6
+    r = 110
+    max_v = SCALE_MAX
+
+    # 四个轴角度：上 / 右 / 下 / 左（对应 dims 顺序）
+    angles = [-90, 0, 90, 180]
+
+    def point(v, i):
+        if v is None:
+            return None
+        a = angles[i] * 3.14159 / 180
+        ratio = v / max_v
+        return cx + ratio * r * __import__('math').cos(a), cy + ratio * r * __import__('math').sin(a)
+
+    # 网格：同心菱形（1-5）
+    grid = ""
+    for level in range(1, 6):
+        pts = []
+        for i, a in enumerate(angles):
+            rad = a * 3.14159 / 180
+            x = cx + (level / max_v) * r * __import__('math').cos(rad)
+            y = cy + (level / max_v) * r * __import__('math').sin(rad)
+            pts.append(f"{x:.1f},{y:.1f}")
+        grid += f'<polygon points="{" ".join(pts)}" fill="none" stroke="#e5e7eb" stroke-width="1"/>'
+        if level == max_v:
+            continue
+        # 右侧小刻度标签
+        grid += f'<text x="{cx+4:.1f}" y="{cy-(level/max_v)*r+4:.1f}" font-size="9" fill="#d1d5db">{level}</text>'
+
+    # 轴线 + 维度标签
+    axes = ""
+    for i, d in enumerate(dims):
+        rad = angles[i] * 3.14159 / 180
+        x2 = cx + r * __import__('math').cos(rad)
+        y2 = cy + r * __import__('math').sin(rad)
+        axes += f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#e5e7eb" stroke-width="1"/>'
+        lx = cx + (r + 22) * __import__('math').cos(rad)
+        ly = cy + (r + 22) * __import__('math').sin(rad)
+        anchor = "middle"
+        dy = 0
+        if i == 1:  # right
+            anchor = "start"
+        elif i == 3:  # left
+            anchor = "end"
+        if i == 0:
+            dy = -4
+        elif i == 2:
+            dy = 4
+        axes += f'<text x="{lx:.1f}" y="{ly+dy:.1f}" text-anchor="{anchor}" font-size="12" fill="#6b7280">{esc(d)}</text>'
+
+    # 多边形
+    def poly(vals, fill, stroke, stroke_dash=None):
+        pts = []
+        for i, v in enumerate(vals):
+            p = point(v, i)
+            if p is None:
+                return "", ""
+            pts.append(f"{p[0]:.1f},{p[1]:.1f}")
+        dash = f' stroke-dasharray="{stroke_dash}"' if stroke_dash else ""
+        path = f'<polygon points="{" ".join(pts)}" fill="{fill}" stroke="{stroke}" stroke-width="2"{dash}/>'
+        dots = "".join(
+            f'<circle cx="{point(v,i)[0]:.1f}" cy="{point(v,i)[1]:.1f}" r="3.5" fill="{stroke}"/>'
+            for i, v in enumerate(vals) if v is not None)
+        return path, dots
+
+    bench_poly, bench_dots = poly(bench_values, "rgba(107,114,128,.12)", "#6b7280", "4 4") if any(v is not None for v in bench_values) else ("", "")
+    comp_poly, comp_dots = poly(comp_values, "rgba(156,163,175,.18)", "#9ca3af", "5 3") if any(v is not None for v in comp_values) else ("", "")
+    unit_poly, unit_dots = poly(values, "rgba(59,130,246,.18)", "#3b82f6")
+
+    # 数值标签（仅本单位）
+    labels = ""
+    for i, (v, d) in enumerate(zip(values, dims)):
+        if v is None:
+            continue
+        p = point(v, i)
+        offset = 10
+        lx = p[0]
+        ly = p[1]
+        if i == 0:  # top
+            ly -= offset
+        elif i == 2:  # bottom
+            ly += offset + 4
+        elif i == 1:  # right
+            lx += offset
+        else:  # left
+            lx -= offset
+        labels += f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="#2563eb">{v:.2f}</text>'
+
+    svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
+           f'{grid}{axes}{bench_poly}{bench_dots}{comp_poly}{comp_dots}{unit_poly}{unit_dots}{labels}</svg>')
+
+    # 图例
+    legend_items = [("#3b82f6", unit.get("name", "本单位"))]
+    if compare_label and any(v is not None for v in comp_values):
+        legend_items.append(("#9ca3af", compare_label))
+    if benchmark_label and any(v is not None for v in bench_values):
+        legend_items.append(("#6b7280", benchmark_label))
+
+    legend = '<div class="radar-legend">'
+    for col, lbl in legend_items:
+        legend += f'<span><i style="background:{col}"></i>{esc(lbl)}</span>'
+    legend += '</div>'
+    src = f'<div class="radar-src">数据来源：{esc(benchmark_source)}</div>' if benchmark_source else ""
+    return f'<div class="radar-wrap">{svg}{legend}{src}</div>'
 
 
 def question_table(unit, meta, compare_units=None, compare_labels=None):
@@ -618,7 +804,7 @@ def scatter_matrix(bus, meta):
                  f'<text x="{cx:.1f}" y="{cy+rad+14:.1f}" text-anchor="middle" font-size="10" fill="#6b7280">{u["grand_mean"]} · 怠工{dis:.0f}%</text>')
     svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
            f'{quads_bg}{dividers}{qlabels}{x_axis}{y_axis}{axis_titles}{dots}</svg>')
-    return (f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)">{svg}</div>'
+    return (f'{svg}'
             f'<div class="legend">气泡大小=人数 · 颜色=健康评级 · 象限按"健康度4.5 / 人数中位数{med_n}"划分</div>')
 
 
@@ -680,7 +866,7 @@ def classify_quadrant(mean, std, mean_med, std_med):
     return "高压经理"  # mean > mean_med and std > std_med
 
 
-def manager_quadrant_html(data, bu_name, meta):
+def manager_quadrant_html(data, bu_name, meta, part="all"):
     """经理人效能象限：本事业部下属三级部门负责人。
     横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆圈大小=团队人数；颜色=象限。
     阈值（中位数）默认取本事业部下属三级部门，部门数<3 时回退公司整体中位数。
@@ -855,58 +1041,90 @@ def manager_quadrant_html(data, bu_name, meta):
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
     )
 
-    return (
-        f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)">'
+    chart = (
         f'{svg}'
         f'<div class="legend">仅展示本事业部下属三级部门 · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
         f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
-        f'{cards_html}{table_html}'
+    )
+    if part == "chart":
+        return chart
+    if part == "cards":
+        return cards_html + table_html
+    return (
+        f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)">'
+        f'{chart}{cards_html}{table_html}'
         f'</div>'
     )
 
 
 def diagnosis_bars(company, meta):
-    """系统性vs局部问题：横向条形图，比文字卡片更直观。低饱和同色系，按题号排序。"""
-    qd = company.get("question_diagnosis", {})
-    if not qd:
-        return ""
-    # 低饱和度同色系（避免亮色刺眼）
-    type_cfg = {"systemic": ("系统性·政策级", "#b86b6b", "全司共性短板 → 组织级机制方案"),
-                "localized": ("局部·管理辅导", "#c4a06a", "个别单位问题 → 主管辅导改善"),
-                "strength": ("组织优势", "#7faa90", "全司强项 → 提炼推广")}
-    # 按题目序号排序（Q1, Q2, ... Q12）
-    qs = [q for q in meta["questions"] if q in qd]
+    """系统性 vs 局部问题：12 道题得分横向条形图，参考截图样式。
+    按题号排序，按分数段着色（低红/中蓝/高绿），最低 3 道加警示标，附预警线/优秀线。"""
+    qs = [q for q in meta["questions"] if q in company.get("questions", {})]
     qs.sort(key=lambda q: int(q[1:]) if q[1:].isdigit() else 999)
-    rows = ""
-    for q in qs:
-        d = qd[q]
-        cm = d["company_mean"]
-        if cm is None:
-            continue
-        t = d["type"]
-        nm, col, desc = type_cfg[t]
-        pct = cm / 5.0 * 100
-        short = meta["question_short"][q]
-        rows += (f'<div class="qbar-row">'
-                 f'<div class="qbar-label"><b>{q}</b> {esc(short)}</div>'
-                 f'<div class="qbar-track"><div class="qbar-fill" style="width:{pct:.0f}%;background:{col}"></div></div>'
-                 f'<div class="qbar-score" style="color:{col}">{cm}</div>'
-                 f'<div><span class="chip" style="background:{col}22;color:{col}">{nm}</span></div>'
-                 f'</div>')
-    # 分组说明
-    groups = {"systemic": [], "localized": [], "strength": []}
-    for q in qs:
-        if q in qd:
-            groups[qd[q]["type"]].append(q)
-    summary = ""
-    for t in ["systemic", "localized", "strength"]:
-        if not groups[t]:
-            continue
-        nm, col, desc = type_cfg[t]
-        cnt = len(groups[t])
-        summary += f'<span class="chip" style="background:{col}22;color:{col};margin-right:8px">{nm} ({cnt}题)</span>'
-    return (f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;box-shadow:var(--shadow)">{rows}</div>'
-            f'<div class="legend">{summary}</div>')
+    items = [(q, company["questions"][q]) for q in qs
+             if company["questions"][q].get("mean") is not None]
+    if not items:
+        return '<div class="muted">无可用数据</div>'
+
+    # 最低 3 道
+    bottom3 = {q for q, _ in sorted(items, key=lambda x: x[1]["mean"])[:3]}
+
+    W, H = 680, 520
+    left, right, top, bottom = 130, 70, 34, 40
+    cw = W - left - right
+    ch = H - top - bottom
+    row_h = 36
+    bar_h = 24
+    axis_min = 1.0
+
+    def x_pos(v):
+        return left + max(0, min(cw, (v - axis_min) / (SCALE_MAX - axis_min) * cw))
+
+    # 背景网格线 / X 轴刻度（1-5）
+    grid = ""
+    for v in range(1, 6):
+        x = x_pos(v)
+        grid += f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+ch}" stroke="#f3f4f6" stroke-width="1"/>'
+        grid += f'<text x="{x:.1f}" y="{top+ch+18}" text-anchor="middle" font-size="11" fill="#9ca3af">{v}</text>'
+
+    # 参考线：预警线 4.0 / 优秀线 4.5
+    refs = ""
+    for v, label, color in [(4.0, "预警线", "#f59e0b"), (4.5, "优秀线", "#10b981")]:
+        x = x_pos(v)
+        refs += f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+ch}" stroke="{color}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+        refs += f'<text x="{x:.1f}" y="{top-8}" text-anchor="middle" font-size="11" fill="{color}" font-weight="600">{label} {v}</text>'
+
+    bars = ""
+    for i, (q, d) in enumerate(items):
+        mean = d["mean"]
+        band = d.get("band")
+        if band == "预警":
+            col = "#ef4444"
+        elif band in ("关注", "良好"):
+            col = "#3b82f6"
+        else:  # 优势
+            col = "#10b981"
+        x_start = x_pos(axis_min)
+        x_end = x_pos(mean)
+        width = max(0, x_end - x_start)
+        y = top + i * row_h
+        short = meta["question_short"].get(q, "")
+        warn = f'<text x="{x_end+38:.1f}" y="{y+20:.1f}" font-size="15" fill="#f59e0b">▲</text>' if q in bottom3 else ""
+        score_x = x_end + 10 if width > 40 else x_end + 36  # 条太短则数值右移
+        bars += (
+            f'<text x="{left-10:.1f}" y="{y+15:.1f}" text-anchor="end" font-size="14" font-weight="700" fill="#374151">{q}</text>'
+            f'<text x="{left-10:.1f}" y="{y+32:.1f}" text-anchor="end" font-size="12" fill="#6b7280">{esc(short)}</text>'
+            f'<rect x="{x_start:.1f}" y="{y+6:.1f}" width="{width:.1f}" height="{bar_h}" rx="5" fill="{col}"/>'
+            f'<text x="{score_x:.1f}" y="{y+22:.1f}" font-size="13" font-weight="700" fill="{col}">{mean:.2f}</text>'
+            f'{warn}'
+        )
+
+    svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
+           f'{grid}{refs}{bars}</svg>')
+    return (f'{svg}'
+            f'<div class="legend">按 5 分制绘制 · 最低 3 道题已标 ▲ · 黄色虚线=预警线(4.0) · 绿色虚线=优秀线(4.5)</div>')
+
 
 
 def risk_dashboard(company, bus, meta):
@@ -999,6 +1217,60 @@ def manager_hero(dept, meta):
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 1fr">'
             f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>')
+
+
+def manager_team_snapshot(dept, meta):
+    """经理人看板：单个团队的四类员工分布快照（100% 堆叠条）"""
+    eng = dept["engagement"]
+    gm = dept["grand_mean"] or 0
+    ratio = max(0.0, min(1.0, (gm - 4.0) / 1.0))
+    high = eng["engaged_pct"] * ratio
+    inspired = eng["engaged_pct"] - high
+    neg, neu, ins, hi = eng["disengaged_pct"], eng["neutral_pct"], inspired, high
+    total = neg + neu + ins + hi or 1
+    neg, neu, ins, hi = [100 * v / total for v in (neg, neu, ins, hi)]
+    colors = {"neg": "#e52529", "neu": "#9ca3af", "inspired": "#5eead4", "high": "#0d9488"}
+    labels = {"neg": "消极", "neu": "中立", "inspired": "激发", "high": "高效"}
+    segs = "".join(f'<div class="etype-seg" style="width:{v:.1f}%;background:{colors[k]}"></div>'
+                   for k, v in (("neg", neg), ("neu", neu), ("inspired", ins), ("high", hi)) if v > 0)
+    legend = "".join(f'<span><i class="etype-dot" style="background:{colors[k]}"></i>{labels[k]} {v:.0f}%</span>'
+                     for k, v in (("neg", neg), ("neu", neu), ("inspired", ins), ("high", hi))
+                     if v >= 0.5)
+    neg_cls = " high" if neg >= 30 else ""
+    return (f'<div class="etype-chart"><div class="etype-head"><div class="etype-title">团队员工类型</div>'
+            f'<div class="etype-sub">按个人均分估算 · 消极≥30%标红</div></div>'
+            f'<div class="etype-bar-wrap" style="height:30px">{segs}</div>'
+            f'<div class="etype-neg{neg_cls}" style="margin-top:8px;font-size:13px">消极占比 {neg:.0f}%</div>'
+            f'<div class="etype-legend" style="margin-top:8px">{legend}</div></div>')
+
+
+def manager_signals(dept, meta):
+    """经理人看板：团队关键信号一览（快速 KPI 卡）"""
+    eng = dept["engagement"]
+    gm = dept["grand_mean"]
+    bnd = dept["grand_band"]
+    delta = dept.get("grand_mean_delta")
+    dlt = (f"{delta:+.2f}" if delta is not None else "—")
+    dims = [(d, dept["dimensions"][d]["mean"]) for d in DIM_ORDER
+            if meta["dimensions"][d]["questions"] and dept["dimensions"][d]["mean"] is not None]
+    dims.sort(key=lambda x: x[1])
+    weak = dims[0] if dims else ("—", None)
+    weak_txt = weak[0] + ((f"（{weak[1]:.2f}）") if weak[1] is not None else "")
+    dneg = eng["disengaged_pct"]
+    neg_style = 'style="color:#dc2626;font-weight:700"' if dneg >= 30 else ""
+    rows = [
+        ("综合均值", f"{gm}（{bnd}）"),
+        ("环比变化", dlt),
+        ("敬业 / 怠工", f"{eng['engaged_pct']:.0f}% / <span {neg_style}>{dneg:.0f}%</span>"),
+        ("最弱维度", weak_txt),
+        ("样本人数", f"{dept['n']} 人"),
+    ]
+    lis = "".join(
+        '<div class="qbar-row" style="grid-template-columns:1fr auto;gap:14px">'
+        f'<div class="qbar-label">{esc(k)}</div>'
+        f'<div class="qbar-score" style="font-size:15px">{v}</div></div>'
+        for k, v in rows)
+    return "<div>" + lis + "</div>"
 
 
 # ---------- VP看板专属组件 ----------
@@ -1191,24 +1463,34 @@ def render_ceo(data, insights):
     body += sec_head(1, "诊断洞察", "AI 基于数据的总体判断与建议")
     body += insights_html(insights)
 
-    body += sec_head(2, "组织健康阶梯", "员工的四个核心问题 · 低层不稳则高层无效")
-    body += ladder_html(comp, meta)
+    # 卡片网格：干预优先级矩阵与组织风险仪表盘为重点，全宽展示；阶梯与诊断并排
+    body += "<div class='vp-grid'>"
+    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>干预优先级矩阵 "
+             "<small>健康度 × 影响面 · 确定有限注意力投往哪</small></div>" + scatter_matrix(bus, meta) + "</div>")
+    benchmark = meta.get("benchmark")
+    if benchmark:
+        benchmark_source = meta.get("benchmark_source") or "用户提供行业常模"
+    else:
+        benchmark = DEFAULT_BENCHMARK
+        benchmark_source = "缺省参考值（非真实行业调研 · 可在 meta[\"benchmark\"] 覆盖）"
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
+             "<small>公司均值 vs 行业常模（5 分制）</small></div>" +
+             dimension_radar(comp, meta, benchmark=benchmark, benchmark_label="行业常模",
+                             benchmark_source=benchmark_source) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>系统性 vs 局部问题 "
+             "<small>政策级 / 管理辅导 · CEO独有判断</small></div>" + diagnosis_bars(comp, meta) + "</div>")
+    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>组织风险仪表盘 "
+             "<small>需关注信号一览</small></div>" + risk_dashboard(comp, bus, meta) + "</div>")
+    body += "</div>"
 
-    body += sec_head(3, "干预优先级矩阵", "健康度 × 影响面 · 确定有限注意力投往哪")
-    body += scatter_matrix(bus, meta)
-
-    body += sec_head(4, "系统性 vs 局部问题诊断", "全司共性=政策级 / 局部=管理辅导 · CEO独有判断")
-    body += diagnosis_bars(comp, meta)
-
-    body += sec_head(5, "组织风险仪表盘", "需关注的风险信号一览")
-    body += risk_dashboard(comp, bus, meta)
-
-    body += sec_head(6, "一级事业部横向对比")
+    # 通栏：一级事业部横向对比
     rows = sorted(bus.items(), key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))
-    body += heat_table([(n, u, u.get("percentile_vs_bus")) for n, u in rows], meta,
-                       "一级事业部", "内部百分位 = 综合得分超过多少百分比的同级单位")
-    body += legend_html(meta)
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>一级事业部横向对比 "
+             "<small>内部百分位 = 综合得分超过多少百分比的同级单位</small></div>"
+             + heat_table([(n, u, u.get("percentile_vs_bus")) for n, u in rows], meta, "一级事业部")
+             + legend_html(meta) + "</div>")
 
+    # 通栏：高风险部门
     risk = []
     for bn, bu in bus.items():
         for l2n, l2 in bu["l2_units"].items():
@@ -1217,21 +1499,71 @@ def render_ceo(data, insights):
                     risk.append((bn, l2n, dn, d))
     if risk:
         risk.sort(key=lambda x: x[3]["grand_mean"])
-        body += sec_head(7, "高风险部门（三级部门）", "综合均值 < 4.0 · 需CEO直接关注")
-        body += ("<table><tr><th>一级事业部</th><th>二级单位</th><th>三级部门</th>"
-                 "<th class='num'>人数</th><th class='num'>综合均值</th><th>最弱两项</th>"
-                 "<th class='num'>怠工占比</th></tr>")
+        risk_tbl = ("<table><tr><th>一级事业部</th><th>二级单位</th><th>三级部门</th>"
+                    "<th class='num'>人数</th><th class='num'>综合均值</th><th>最弱两项</th>"
+                    "<th class='num'>怠工占比</th></tr>")
         for bn, l2n, dn, d in risk:
-            weak = "、".join(f'{q} {data["meta"]["question_short"][q]}({d["questions"][q]["mean"]})'
+            weak = "、".join(f'{q} {meta["question_short"][q]}({d["questions"][q]["mean"]})'
                              for q in d["bottom_questions"])
-            body += (f"<tr><td>{esc(bn)}</td><td>{esc(l2n)}</td><td><b>{esc(dn)}</b></td>"
-                     f"<td class='num'>{d['n']}</td>"
-                     f"<td class='num' style='color:#ef4444;font-weight:700'>{d['grand_mean']}</td>"
-                     f"<td>{esc(weak)}</td><td class='num'>{d['engagement']['disengaged_pct']:.0f}%</td></tr>")
-        body += "</table>"
+            risk_tbl += (f"<tr><td>{esc(bn)}</td><td>{esc(l2n)}</td><td><b>{esc(dn)}</b></td>"
+                         f"<td class='num'>{d['n']}</td>"
+                         f"<td class='num' style='color:#ef4444;font-weight:700'>{d['grand_mean']}</td>"
+                         f"<td>{esc(weak)}</td><td class='num'>{d['engagement']['disengaged_pct']:.0f}%</td></tr>")
+        risk_tbl += "</table>"
+        body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>高风险部门（三级部门） "
+                 "<small>综合均值 < 4.0 · 需 CEO 直接关注</small></div>" + risk_tbl + "</div>")
+
+    # 折叠：逐题得分卡
+    body += ("<details class='vfold'><summary>展开：逐题得分卡 · 公司整体逐题明细</summary>"
+             "<div class='vfold-body'>"
+             + question_table(comp, meta, [], []) + legend_html(meta) + "</div></details>")
 
     body += footnote(meta)
     return page(f"CEO看板-公司总览{('-' + period) if period else ''}", body)
+
+
+def vp_action_summary(bu, data, meta):
+    """VP 行动建议：聚合维度差距、低分部门、共性短板，生成可复制的行动要点。"""
+    comp = data["company"]
+    pts = []
+    # 维度差距（本事业部 vs 公司）
+    dg = []
+    for d in DIM_ORDER:
+        if meta["dimensions"][d]["questions"]:
+            bm = bu["dimensions"][d]["mean"]
+            cm = comp["dimensions"][d]["mean"]
+            if bm is not None and cm is not None:
+                dg.append((d, bm, bm - cm))
+    dg.sort(key=lambda x: x[2])
+    if dg and dg[0][2] <= -0.05:
+        d, m, g = dg[0]
+        pts.append(f"最弱维度为「{d}」（{m:.2f} 分，低于公司 {abs(g):.2f} 分），建议作为首要补齐方向。")
+    if dg and dg[-1][2] >= 0.05:
+        d, m, g = dg[-1]
+        pts.append(f"优势维度「{d}」（{m:.2f} 分，高于公司 {g:.2f} 分），可沉淀为可复制的标杆做法。")
+    # 低于 4.0 的部门
+    low_depts = []
+    for l2n, l2 in bu["l2_units"].items():
+        for dn, d in l2["departments"].items():
+            if not d["suppressed"] and d["grand_mean"] is not None and d["grand_mean"] < 4.0:
+                low_depts.append((dn, d["grand_mean"]))
+    if low_depts:
+        low_depts.sort(key=lambda x: x[1])
+        names = "、".join(f"{dn}（{m:.2f}）" for dn, m in low_depts[:4])
+        pts.append(f"综合均值低于 4.0 分的部门需优先辅导：{names}。")
+    # 跨部门共性短板
+    depts = [d for l2 in bu["l2_units"].values() for d in l2["departments"].values()
+             if not d["suppressed"] and d["grand_mean"] is not None]
+    common = []
+    for q in meta["questions"]:
+        low = [d for d in depts if d["questions"][q]["mean"] is not None and d["questions"][q]["mean"] < 4.0]
+        if len(low) >= 2:
+            common.append(q)
+    if common:
+        pts.append(f"共性短板题项：{'、'.join(common[:3])} 等，多个部门同低，宜从事业部机制层面统筹解决而非单点要求主管。")
+    if not pts:
+        pts.append("本事业部整体处于健康区间，维持现有管理动作并关注边际变化即可。")
+    return "<ul class='vp-actions'>" + "".join(f"<li>{esc(p)}</li>" for p in pts) + "</ul>"
 
 
 def render_vp(data, bu_name, insights):
@@ -1243,11 +1575,19 @@ def render_vp(data, bu_name, insights):
     body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
     body += vp_hero(bu, meta, data["business_units"], bu_name)
+    # 诊断洞察
     body += sec_head(1, "诊断洞察", "AI 基于数据的本部判断与建议")
     body += insights_html(insights)
-    body += sec_head(2, "组织健康阶梯")
-    body += ladder_html(bu, meta)
-    body += sec_head(3, "二级部门及三级部门维度数据对比")
+    # 2×2 卡片网格
+    body += "<div class='vp-grid'>"
+    # 左上：组织健康阶梯
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>组织健康阶梯 "
+             f"<small>四层维度 · 本事业部 vs 公司</small></div>{ladder_html(bu, meta, inline_text=True)}</div>")
+    # 右上：经理人效能象限（仅图）
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>经理人效能象限 "
+             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
+    # 左下：二级/三级部门维度数据对比
     tree = []
     for l2n, l2 in sorted(bu["l2_units"].items(),
                           key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0))):
@@ -1255,18 +1595,27 @@ def render_vp(data, bu_name, insights):
         for dn, d in sorted(l2["departments"].items(),
                             key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0))):
             tree.append((dn, d, d.get("percentile_vs_depts"), 1, d.get("manager_tag")))
-    body += heat_table(tree, meta, "二级 / 三级部门",
-                       "效能标签：优秀标杆 = 均值≥4.5 或本部前列且低怠工；需辅导 = 均值<3.5 或怠工≥20%",
-                       show_tag=True)
-    body += legend_html(meta)
-    body += bu_trait_diagnosis(bu, comp, meta)
-    body += cross_dept_common(bu, meta)
-    body += sec_head(4, "经理人效能象限", "本事业部下属三级部门负责人 · 团队均分(横轴) vs 人员间标准差(纵轴) · 阈值取中位数")
-    body += manager_quadrant_html(data, bu_name, meta)
-    body += sec_head(5, "员工类型分布", "下辖三级部门 · 消极/中立/激发/高效 · 按消极占比降序")
-    body += employee_type_distribution(data, bu_name, meta)
-    body += sec_head(6, "逐题得分卡（对比公司整体）")
-    body += question_table(bu, meta, [comp], ["公司整体"]) + legend_html(meta)
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级/三级部门维度数据对比 "
+             f"<small>含主管效能标签</small></div>"
+             f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级 / 三级部门', '', show_tag=True)}</div></div>")
+    # 右下：员工类型分布
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>员工类型分布 "
+             f"<small>消极/中立/激发/高效 · 按消极占比降序</small></div>"
+             f"{employee_type_distribution(data, bu_name, meta)}</div>")
+    body += "</div>"
+    # 通栏：经理效能矩阵解读（四画像卡 + 解读表）
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>经理效能矩阵解读</div>"
+             + manager_quadrant_html(data, bu_name, meta, part="cards") + "</div>")
+    # 通栏：VP 行动建议
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>VP 行动建议</div>"
+             + vp_action_summary(bu, data, meta) + "</div>")
+    # 折叠：逐题得分卡 / 本部特质 / 跨部门共性
+    body += ("<details class='vfold'><summary>展开：逐题得分卡 · 本部特质诊断 · 跨部门共性</summary>"
+             "<div class='vfold-body'>"
+             + bu_trait_diagnosis(bu, comp, meta)
+             + cross_dept_common(bu, meta)
+             + question_table(bu, meta, [comp], ["公司整体"]) + legend_html(meta)
+             + "</div></details>")
     body += footnote(meta)
     return page(f"VP看板-{bu_name}{('-' + period) if period else ''}", body)
 
@@ -1294,13 +1643,23 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
              '样本&lt;6人时不显示分布，仅显示均值。</div>')
     body += sec_head(1, "诊断洞察", "AI 基于数据的团队判断与建议")
     body += insights_html(insights)
-    body += sec_head(2, "优先改善项", "根因假设与1:1对话指南 · 针对本团队薄弱题项")
-    body += rootcause_conversation(dept, meta, insights)
-    body += sec_head(3, "参考：逐题对比", "团队 vs 二级 / 一级 / 公司 · 四重对照")
-    body += (question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
-             + legend_html(meta))
-    body += sec_head(4, "30 / 60 / 90 天行动清单", "按时间盒排优先级 · 30天立即、60天固化、90天复盘")
-    body += action_timeline(insights, dept, meta)
+    # 2×2 卡片网格
+    body += "<div class='vp-grid'>"
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>团队健康快照 "
+             "<small>四类员工分布</small></div>" + manager_team_snapshot(dept, meta) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>优先改善项 "
+             "<small>根因假设与 1:1 指南</small></div>" + rootcause_conversation(dept, meta, insights) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>30 / 60 / 90 天行动清单 "
+             "<small>按时间盒排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
+             "<small>本部门 vs 公司（5 分制）</small></div>" +
+             dimension_radar(dept, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
+    body += "</div>"
+    # 通栏：逐题对比
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>参考：逐题对比 "
+             "<small>团队 vs 二级 / 一级 / 公司 · 四重对照</small></div>"
+             + question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
+             + legend_html(meta) + "</div>")
     body += footnote(meta, "经理人看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
     return page(f"经理人看板-{dept_name}{('-' + period) if period else ''}", body)
 
