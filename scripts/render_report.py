@@ -929,44 +929,63 @@ def classify_quadrant(mean, std, mean_med, std_med):
     return "高压经理"  # mean > mean_med and std > std_med
 
 
-def manager_quadrant_html(data, bu_name, meta, part="all"):
-    """二级部门负责人效能象限：本事业部下属二级部门。
+def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
+    """主管效能象限：展示某层级下属团队的负责人分布。
+    l2_name 不传时展示该事业部下属二级部门负责人；传入时展示该二级部门下属三级部门负责人。
     横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆圈大小=团队人数；颜色=象限。
-    阈值（中位数）默认取本事业部下属二级部门，二级部门数<3 时回退全公司二级部门中位数。
     """
     bu = data["business_units"][bu_name]
 
-    # 收集本事业部下所有二级部门
-    items = []
-    for l2n, l2 in bu["l2_units"].items():
-        if l2.get("suppressed") or l2.get("grand_mean") is None:
-            continue
-        items.append({
-            "l2": l2n, "n": l2["n"],
-            "mean": l2["grand_mean"],
-            "std": l2.get("score_std") or 0,
-            "band": l2.get("grand_band"),
-        })
-    if not items:
-        return '<div class="muted">本事业部暂无可展示的二级部门数据</div>'
+    if l2_name is not None:
+        parent = bu["l2_units"][l2_name]
+        scope_word = "三级部门"
+        scope_desc = "本二级部门下属三级部门"
+        items = []
+        for dn, d in parent["departments"].items():
+            if d.get("suppressed") or d.get("grand_mean") is None:
+                continue
+            items.append({"l2": dn, "n": d["n"], "mean": d["grand_mean"],
+                          "std": d.get("score_std") or 0, "band": d.get("grand_band")})
+        if not items:
+            return '<div class="muted">本二级部门暂无可展示的三级部门数据</div>'
+    else:
+        scope_word = "二级部门"
+        scope_desc = "本事业部下属二级部门"
+        items = []
+        for l2n, l2 in bu["l2_units"].items():
+            if l2.get("suppressed") or l2.get("grand_mean") is None:
+                continue
+            items.append({"l2": l2n, "n": l2["n"], "mean": l2["grand_mean"],
+                          "std": l2.get("score_std") or 0, "band": l2.get("grand_band")})
+        if not items:
+            return '<div class="muted">本事业部暂无可展示的二级部门数据</div>'
 
-    # 中位数阈值：优先本事业部，不足 3 个二级部门回退全公司二级部门
+    # 中位数阈值：优先本层级，不足 3 个回退全公司同层级
     means = [it["mean"] for it in items]
     stds = [it["std"] for it in items]
     if len(items) >= 3:
         mean_med = statistics.median(means)
         std_med = statistics.median(stds)
-        med_src = "本事业部下属二级部门"
+        med_src = scope_desc
     else:
         all_means, all_stds = [], []
-        for bn, b in data["business_units"].items():
-            for l2n, l2 in b["l2_units"].items():
-                if l2.get("grand_mean") is not None:
-                    all_means.append(l2["grand_mean"])
-                    all_stds.append(l2.get("score_std") or 0)
+        if l2_name is not None:
+            for bn, b in data["business_units"].items():
+                for l2n, l2 in b["l2_units"].items():
+                    for dn, d in l2["departments"].items():
+                        if d.get("grand_mean") is not None:
+                            all_means.append(d["grand_mean"])
+                            all_stds.append(d.get("score_std") or 0)
+            med_src = "全公司三级部门"
+        else:
+            for bn, b in data["business_units"].items():
+                for l2n, l2 in b["l2_units"].items():
+                    if l2.get("grand_mean") is not None:
+                        all_means.append(l2["grand_mean"])
+                        all_stds.append(l2.get("score_std") or 0)
+            med_src = "全公司二级部门"
         mean_med = statistics.median(all_means) if all_means else 0
         std_med = statistics.median(all_stds) if all_stds else 0
-        med_src = "全公司二级部门"
 
     for it in items:
         it["quad"] = classify_quadrant(it["mean"], it["std"], mean_med, std_med)
@@ -1090,10 +1109,10 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
             f'</tr>'
         )
     table_html = (
-        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">二级部门象限解读</h4>'
+        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">{esc(scope_word)}象限解读</h4>'
         f'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
         f'<thead><tr style="background:#f3f4f6">'
-        f'<th style="padding:10px 12px;text-align:left;font-weight:700">二级部门</th>'
+        f'<th style="padding:10px 12px;text-align:left;font-weight:700">{esc(scope_word)}</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">人数</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">团队均分</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">标准差</th>'
@@ -1104,7 +1123,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
 
     chart = (
         f'{svg}'
-        f'<div class="legend">仅展示本事业部下属二级部门 · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
+        f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
         f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
     )
     if part == "chart":
@@ -1339,8 +1358,8 @@ def manager_signals(dept, meta):
 
 # ---------- VP看板专属组件 ----------
 
-def bu_trait_diagnosis(bu, company, meta):
-    """本部特质：与公司差异最大的3题——往往反映VP自身管理风格"""
+def bu_trait_diagnosis(bu, company, meta, unit_label="事业部"):
+    """本部特质：与公司差异最大的3题——往往反映该层级负责人的管理风格"""
     diffs = []
     for q in meta["questions"]:
         bm = bu["questions"][q]["mean"]
@@ -1361,16 +1380,24 @@ def bu_trait_diagnosis(bu, company, meta):
     return ('<h2>本部特质诊断 <span style="font-weight:400;font-size:12px;color:var(--sub)">'
             '与公司差异最大的3题</span></h2>'
             '<div class="insight" style="border-left-color:#8250df"><b>解读</b>：'
-            '差异最大的题目往往反映事业部负责人的管理风格影响——'
-            '若多个部门在这几题上同向偏离，说明根子可能在VP层而非部门层。</div>'
-            f'<table><tr><th>题项</th><th class="num">本部</th><th class="num">公司</th>'
+            f'差异最大的题目往往反映{unit_label}负责人的管理风格影响——'
+            f'若多个团队在这几题上同向偏离，说明根子可能在{unit_label}负责人层而非团队层。</div>'
+            f'<table><tr><th>题项</th><th class="num">本单元</th><th class="num">公司</th>'
             f'<th class="num">差异</th></tr>{rows}</table>')
 
 
-def cross_dept_common(bu, meta):
-    """跨部门共性：本部多个部门同时低分的题——可能是事业部级问题"""
-    dept_list = [d for l2 in bu["l2_units"].values() for d in l2["departments"].values()
-                 if not d["suppressed"]]
+def cross_dept_common(bu, meta, l2_name=None):
+    """跨子单元共性：本部（或指定二级部门）多个子单元同时低分的题。"""
+    if l2_name is not None:
+        dept_list = [d for d in bu["l2_units"][l2_name]["departments"].values()
+                     if not d["suppressed"]]
+        scope_word = "团队"
+        level_word = "二级部门级"
+    else:
+        dept_list = [d for l2 in bu["l2_units"].values() for d in l2["departments"].values()
+                     if not d["suppressed"]]
+        scope_word = "部门"
+        level_word = "事业部级"
     if len(dept_list) < 2:
         return ""
     common = []
@@ -1383,11 +1410,11 @@ def cross_dept_common(bu, meta):
     common.sort(key=lambda x: x[1], reverse=True)
     chips = "".join(
         f'<span class="bu-chip"><b>{q}</b> {esc(meta["question_short"][q])} — '
-        f'{cnt}/{tot} 部门低于4.0</span>' for q, cnt, tot in common)
-    return ('<h3>跨部门共性短板</h3>'
+        f'{cnt}/{tot} {scope_word}低于4.0</span>' for q, cnt, tot in common)
+    return (f'<h3>跨{scope_word}共性短板</h3>'
             '<div class="insight" style="border-left-color:#d4a72c"><b>注意</b>：'
-            '以下题目在多个部门同时偏低，提示这是<b>事业部级问题</b>而非个别主管问题，'
-            '建议从事业部机制/VP自身管理方式上找原因，而非只要求下属主管改善。</div>'
+            f'以下题目在多个{scope_word}同时偏低，提示这是<b>{level_word}问题</b>而非个别主管问题，'
+            f'建议从{level_word}机制/负责人自身管理方式上找原因，而非只要求下属主管改善。</div>'
             f'<div style="margin-top:8px">{chips}</div>')
 
 
@@ -1431,11 +1458,13 @@ def action_timeline(ins, dept, meta):
             f'<div class="tl-h" style="color:#cf222e">30 天建议</div><ul>{li}</ul></div></div>')
 
 
-def employee_type_distribution(data, bu_name, meta):
-    """员工类型分布：VP视角 · 本BU下所有三级部门 100% 堆叠条形图，按二级单位分组"""
+def employee_type_distribution(data, bu_name, meta, l2_name=None):
+    """员工类型分布：本BU（或指定二级部门）下所有三级部门 100% 堆叠条形图。
+    l2_name 传入时仅展示该二级部门下属的三级部门。"""
     bu = data["business_units"].get(bu_name, {})
+    l2_units = {l2_name: bu["l2_units"][l2_name]} if l2_name else bu.get("l2_units", {})
     rows = []
-    for l2n, l2 in sorted(bu.get("l2_units", {}).items()):
+    for l2n, l2 in sorted(l2_units.items()):
         for dn, d in l2["departments"].items():
             if d["suppressed"]:
                 continue
@@ -1457,7 +1486,7 @@ def employee_type_distribution(data, bu_name, meta):
                 "neg": neg, "neu": neu, "inspired": inspired, "high": high,
             })
 
-    if len(rows) < 2:
+    if not rows:
         return ""
 
     # 按消极占比降序，相同则按均值降序
@@ -1544,11 +1573,12 @@ def render_ceo(data, insights):
     return page(f"CEO看板-公司总览{('-' + period) if period else ''}", body)
 
 
-def vp_action_summary(bu, data, meta):
-    """VP 行动建议：聚合维度差距、低分部门、共性短板，生成可复制的行动要点。"""
+def vp_action_summary(bu, data, meta, unit_label="本事业部", sub_word="部门"):
+    """行动建议：聚合维度差距、低分子单元、共性短板，生成可复制的行动要点。
+    unit_label 控制『本事业部』等前缀词；sub_word 控制子单元称谓（二级部门面板用『团队』）。"""
     comp = data["company"]
     pts = []
-    # 维度差距（本事业部 vs 公司）
+    # 维度差距（本单元 vs 公司）
     dg = []
     for d in DIM_ORDER:
         if meta["dimensions"][d]["questions"]:
@@ -1563,7 +1593,7 @@ def vp_action_summary(bu, data, meta):
     if dg and dg[-1][2] >= 0.05:
         d, m, g = dg[-1]
         pts.append(f"优势维度「{d}」（{m:.2f} 分，高于公司 {g:.2f} 分），可沉淀为可复制的标杆做法。")
-    # 低于 4.0 的部门
+    # 低于 4.0 的子单元
     low_depts = []
     for l2n, l2 in bu["l2_units"].items():
         for dn, d in l2["departments"].items():
@@ -1572,8 +1602,8 @@ def vp_action_summary(bu, data, meta):
     if low_depts:
         low_depts.sort(key=lambda x: x[1])
         names = "、".join(f"{dn}（{m:.2f}）" for dn, m in low_depts[:4])
-        pts.append(f"综合均值低于 4.0 分的部门需优先辅导：{names}。")
-    # 跨部门共性短板
+        pts.append(f"综合均值低于 4.0 分的{sub_word}需优先辅导：{names}。")
+    # 跨子单元共性短板
     depts = [d for l2 in bu["l2_units"].values() for d in l2["departments"].values()
              if not d["suppressed"] and d["grand_mean"] is not None]
     common = []
@@ -1582,14 +1612,15 @@ def vp_action_summary(bu, data, meta):
         if len(low) >= 2:
             common.append(q)
     if common:
-        pts.append(f"共性短板题项：{'、'.join(common[:3])} 等，多个部门同低，宜从事业部机制层面统筹解决而非单点要求主管。")
+        pts.append(f"共性短板题项：{'、'.join(common[:3])} 等，多个{sub_word}同低，宜从{unit_label}机制层面统筹解决而非单点要求主管。")
     if not pts:
-        pts.append("本事业部整体处于健康区间，维持现有管理动作并关注边际变化即可。")
+        pts.append(f"{unit_label}整体处于健康区间，维持现有管理动作并关注边际变化即可。")
     return "<ul class='vp-actions'>" + "".join(f"<li>{esc(p)}</li>" for p in pts) + "</ul>"
 
 
-def vp_dimension_diagnosis(bu, comp, meta):
-    """Gallup Q12 层次诊断（本事业部）：L4→L1 四维度得分，对比公司均值，含状态标签、层间差与诊断洞察。保持 5 分制。"""
+def vp_dimension_diagnosis(bu, comp, meta, unit_label="本事业部"):
+    """Gallup Q12 层次诊断：L4→L1 四维度得分，对比公司均值，含状态标签、层间差与诊断洞察。保持 5 分制。
+    unit_label 控制标题中的层级词（默认『本事业部』，二级部门面板用『本二级部门』）。"""
     layers = [
         ("L4", "成长发展"),
         ("L3", "团队归属"),
@@ -1687,7 +1718,7 @@ def vp_dimension_diagnosis(bu, comp, meta):
                     f'{"".join(f"<div style=\"font-size:13px;color:#374151;line-height:1.7;margin-bottom:6px\">{x}</div>" for x in insights)}</div>')
 
     return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>Gallup Q12 层次诊断 "
-            f"<small>本事业部 · L4→L1 · 对比公司均值（5 分制）</small></div>"
+            f"<small>{esc(unit_label)} · L4→L1 · 对比公司均值（5 分制）</small></div>"
             f'<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start">'
             f'<div>{"".join(rows)}{gap_html}</div>'
             f'<div>{insight_html}</div></div></div>')
@@ -1738,6 +1769,97 @@ def render_vp(data, bu_name, insights):
              + "</div></details>")
     body += footnote(meta)
     return page(f"VP看板-{bu_name}{('-' + period) if period else ''}", body)
+
+
+def render_manager_l2(data, bu_name, l2_name, insights):
+    """经理人（2级）看板：与 VP（一级事业部）面板结构完全一致，但视角与数据收束到某个二级部门。"""
+    meta, comp = data["meta"], data["company"]
+    bu = data["business_units"][bu_name]
+    l2 = bu["l2_units"][l2_name]
+    period = meta.get("period") or ""
+    n_dept = len(l2["departments"])
+
+    # Hero（与 VP 同款结构，级别降到二级部门）
+    eng = l2["engagement"]
+    pctl = l2.get("percentile_vs_l2")
+    ranked = sorted(bu["l2_units"].items(), key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))
+    rank = next((i for i, (n, u) in enumerate(ranked, 1) if u is l2), 0)
+    total = len(ranked)
+    if pctl is not None:
+        if pctl >= 67: pos, pc = ("引领者", "#10b981")
+        elif pctl >= 33: pos, pc = ("中位水平", "#f59e0b")
+        else: pos, pc = ("落后者", "#ef4444")
+        pos_html = f'<div style="font-size:22px;font-weight:800;color:{pc}">{pos}</div><div style="font-size:11px;color:var(--sub)">事业部内排名 {rank}/{total} · 超过 {pctl}% 二级部门</div>'
+    else:
+        pos_html = '<div class="muted">排名数据不可用</div>'
+    score = l2["grand_mean"]
+    bnd = l2["grand_band"]
+    color = BAND_COLOR.get(bnd, "#8b949e")
+    gauge = (f'<svg width="120" height="120" viewBox="0 0 120 120">'
+             f'<circle cx="60" cy="60" r="48" fill="none" stroke="#e8ebef" stroke-width="10"/>'
+             f'<circle cx="60" cy="60" r="48" fill="none" stroke="{color}" stroke-width="10" stroke-linecap="round"'
+             f' stroke-dasharray="{2*3.14159*48:.1f}" stroke-dashoffset="{2*3.14159*48*(1-min(1,max(0,score/5))):.1f}" transform="rotate(-90 60 60)"/>'
+             f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
+             f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
+    ceng = comp["engagement"]
+    total_emp = meta.get("total_employees") or meta.get("total_respondents", 0)
+    n_pct = round(l2["n"] / total_emp * 100, 1) if total_emp > 0 else 0.0
+    stats = [
+        ("受访人数", str(l2["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
+        ("下辖结构", f"{n_dept} 个三级", "", "#7c3aed", "textual"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
+         "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
+         "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
+    ]
+    stats_html = "".join(
+        f'<div class="hero-stat">{_help_tip(tip)}'
+        f'<div class="hs-label">{esc(l)}</div>'
+        f'<div class="hs-value" style="color:{c}">{v}</div>'
+        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, tip in stats)
+    hero = (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
+            f'<div>{gauge}</div><div>{pos_html}</div>'
+            f'<div class="hero-stats">{stats_html}</div></div>')
+
+    body = header_html(f"经理人（2级） · {l2_name}", "二级部门负责人视角 · 经营与人才培养",
+                       [period, f"受访 {l2['n']} 人", f"{n_dept} 个三级部门"])
+    body += hero
+    # Gallup Q12 层次诊断（通栏）
+    body += vp_dimension_diagnosis(l2, comp, meta, unit_label="本二级部门")
+    # 单列展示：三级部门负责人效能象限（通栏）
+    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>三级部门负责人效能象限 "
+             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"{manager_quadrant_html(data, bu_name, meta, part='chart', l2_name=l2_name)}</div>")
+    # 单列展示：三级部门维度数据对比（通栏）
+    tree = [(f"{dn}", d, d.get("percentile_vs_depts"), 0, None)
+            for dn, d in sorted(l2["departments"].items(),
+                                key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))]
+    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>三级部门维度数据对比 "
+             f"<small>含主管效能标签</small></div>"
+             f"<div style='overflow-x:auto'>{heat_table(tree, meta, '三级部门')}</div></div>")
+    # 以下模块不再并排，单列通栏
+    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>员工类型分布 "
+             f"<small>消极/中立/激发/高效 · 按消极占比降序</small></div>"
+             f"{employee_type_distribution(data, bu_name, meta, l2_name=l2_name)}</div>")
+    body += vp_group_insights(l2, meta, unit_label="本二级部门")
+    body += vp_manager_risk(l2, meta, unit_label="本二级部门")
+    # 通栏：经理人（2级）行动建议（vp_action_summary 复用 BU 形状，将本二级部门部门映射为 l2_units）
+    l2_as_bu = {
+        "dimensions": l2["dimensions"],
+        "l2_units": {dn: {"departments": {dn: d}} for dn, d in l2["departments"].items()},
+    }
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>经理人（2级）行动建议</div>"
+             + vp_action_summary(l2_as_bu, data, meta, unit_label="本二级部门", sub_word="团队") + "</div>")
+    # 折叠：逐题得分卡 / 本部特质 / 跨团队共性
+    body += ("<details class='vfold'><summary>展开：逐题得分卡 · 本部特质诊断 · 跨团队共性</summary>"
+             "<div class='vfold-body'>"
+             + bu_trait_diagnosis(l2, comp, meta, unit_label="二级部门")
+             + cross_dept_common(bu, meta, l2_name=l2_name)
+             + question_table(l2, meta, [comp], ["公司整体"]) + legend_html(meta)
+             + "</div></details>")
+    body += footnote(meta)
+    return page(f"经理人（2级）-{bu_name}-{l2_name}{('-' + period) if period else ''}", body)
 
 
 def render_manager(data, bu_name, l2_name, dept_name, insights):
@@ -1791,10 +1913,12 @@ def render_unified(data, insights):
             f'<div class="sub">基于 {meta["total_respondents"]} 人调研数据 · 三层管理看板统一入口</div></div>')
     ceo_file = f"CEO看板_公司总览{period_suffix}.html"
     vp_idx_file = f"VP索引_选择事业部{period_suffix}.html"
+    mgr_l2_idx_file = f"经理人（2级）索引_选择二级部门{period_suffix}.html"
     mgr_idx_file = f"经理人索引_选择部门{period_suffix}.html"
     cards = [
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
+        ("👤", "经理人（2级）部门报告", "各二级部门报告，内容与 VP 面板完全一致：层次诊断、三级部门负责人效能象限、维度对比、员工类型分布、员工群体洞察、管理者流失风险、行动建议", "经理人（2级）视角", "#e0f2fe", "#0369a1", mgr_l2_idx_file),
         ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、团队员工群体洞察、30天建议", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
     grid = '<div class="entry-grid">'
@@ -1883,6 +2007,35 @@ def render_manager_index(data, insights):
     return page(f"经理人索引{period_suffix}", body)
 
 
+def render_manager_l2_index(data, insights):
+    """经理人（2级）索引页：卡片网格列出所有二级部门（集团视角，逐一级事业部→二级部门）"""
+    meta = data["meta"]
+    period = meta.get("period") or ""
+    period_suffix = f"-{period}" if period else ""
+    bus = data["business_units"]
+    body = (f'<div class="entry-head"><h1>选择二级部门 · 经理人（2级）看板</h1>'
+            f'<div class="sub">共 {sum(len(bu["l2_units"]) for bn, bu in bus.items())} 个二级部门'
+            f' · 按一级事业部 → 二级部门列出</div></div>')
+    for bn, bu in bus.items():
+        body += f'<h3 style="margin:24px 0 12px;font-size:14px;color:var(--sub)">{esc(bn)}</h3>'
+        body += '<div class="entry-grid">'
+        for l2n, l2 in bu["l2_units"].items():
+            n_dept = len(l2["departments"])
+            stats = (f'综合均值 <b>{l2["grand_mean"]}</b>（{esc(l2["grand_band"])}）<br>'
+                     f'下辖 <b>{n_dept}</b> 个三级部门<br>'
+                     f'敬业 {l2["engagement"]["engaged_pct"]:.0f}% · 怠工 {l2["engagement"]["disengaged_pct"]:.0f}%')
+            mgr_file = f"经理人（2级）_{safe_name(bn)}_{safe_name(l2n)}{period_suffix}.html"
+            body += (f'<a class="entry-card" href="{mgr_file}" style="min-height:160px">'
+                     f'<div class="entry-icon">👤</div>'
+                     f'<div class="entry-ctitle">{esc(l2n)}</div>'
+                     f'<div class="entry-cdesc" style="font-size:12px">{stats}</div>'
+                     f'<div class="entry-tag" style="background:#dcfce7;color:#15803d">经理人（2级）</div>'
+                     f'</a>')
+        body += '</div>'
+    body += f'<div class="entry-foot"><a href="组织健康诊断QA14_统一入口总览{period_suffix}.html" style="color:var(--accent);text-decoration:none">← 返回统一入口</a></div>'
+    return page(f"经理人（2级）索引{period_suffix}", body)
+
+
 def safe_name(s):
     return re.sub(r'[\\/:*?"<>|]+', "_", s)
 
@@ -1891,8 +2044,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--analysis", required=True)
     ap.add_argument("--insights", help="AI 撰写的洞察 JSON (可选)")
-    ap.add_argument("--type", required=True, choices=["ceo", "vp", "manager", "unified", "vp_index", "manager_index"],
-                    help="ceo=CEO看板; vp=VP看板; manager=经理人（3级）看板; unified=统一入口; vp_index=VP索引(选事业部); manager_index=经理人索引(选部门)")
+    ap.add_argument("--type", required=True, choices=["ceo", "vp", "manager", "manager_l2", "unified", "vp_index", "manager_index", "manager_l2_index"],
+                    help="ceo=CEO看板; vp=VP看板; manager=经理人（3级）看板; manager_l2=经理人（2级）看板; unified=统一入口; vp_index=VP索引; manager_index=经理人索引; manager_l2_index=经理人（2级）索引")
     ap.add_argument("--target", default="all",
                     help='vp: 一级事业部名或 all; manager: "一级事业部/二级/三级部门" 或 all')
     ap.add_argument("--outdir", default="reports")
@@ -1931,6 +2084,29 @@ def main():
         p = outdir / f"经理人索引_选择部门{('-' + period) if period else ''}.html"
         p.write_text(render_manager_index(data, ins_all), encoding="utf-8")
         written.append(p)
+    elif args.type == "manager_l2_index":
+        p = outdir / f"经理人（2级）索引_选择二级部门{('-' + period) if period else ''}.html"
+        p.write_text(render_manager_l2_index(data, ins_all), encoding="utf-8")
+        written.append(p)
+    elif args.type == "manager_l2":
+        pairs = []
+        if args.target == "all":
+            for bn, bu in data["business_units"].items():
+                for l2n in bu["l2_units"]:
+                    pairs.append((bn, l2n))
+        else:
+            if args.target.count("/") != 1:
+                raise SystemExit('manager_l2 目标格式: "一级事业部/二级部门"')
+            parts = args.target.split("/")
+            pairs = [tuple(parts)]
+        for bn, l2n in pairs:
+            bu = data["business_units"].get(bn, {})
+            if l2n not in bu.get("l2_units", {}):
+                raise SystemExit(f"未找到二级部门: {bn}/{l2n}")
+            p = outdir / f"经理人（2级）_{safe_name(bn)}_{safe_name(l2n)}{('-' + period) if period else ''}.html"
+            p.write_text(render_manager_l2(data, bn, l2n, (ins_all.get("manager_l2") or {}).get(f"{bn}/{l2n}")),
+                         encoding="utf-8")
+            written.append(p)
     else:  # manager
         pairs = []
         if args.target == "all":
@@ -1997,7 +2173,7 @@ def _group_insight_text(demo):
             f'建议优先排查其管理支持与团队归属短板，针对性补强。</div>')
 
 
-def vp_group_insights(bu, meta):
+def vp_group_insights(bu, meta, unit_label="本事业部"):
     """员工群体洞察：按司龄 / 职级 / 性别 / 绩效分组的健康度条形图 + 关键洞察。"""
     demo = bu.get("demographics") or {}
     blocks = []
@@ -2010,8 +2186,8 @@ def vp_group_insights(bu, meta):
         return ""
     ins = _group_insight_text(demo)
     cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
-    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>本事业部员工群体洞察 "
-            f"<small>各群体均分（5 分制 · 仅本事业部员工）</small></div>"
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>{esc(unit_label)}员工群体洞察 "
+            f"<small>各群体均分（5 分制 · 仅{esc(unit_label)}员工）</small></div>"
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
@@ -2033,8 +2209,8 @@ def manager_group_insights(dept, meta):
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
-def vp_manager_risk(bu, meta):
-    """管理者流失风险分析：仅展示本事业部 P7+ 管理者汇总指标，不展示个人信息。"""
+def vp_manager_risk(bu, meta, unit_label="本事业部"):
+    """管理者流失风险分析：仅展示 P7+ 管理者汇总指标，不展示个人信息。"""
     mgr = bu.get("managers") or {"summary": {}}
     s = mgr.get("summary") or {}
     total = s.get("total", 0)
@@ -2048,9 +2224,9 @@ def vp_manager_risk(bu, meta):
     cards_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div></div>' for l, v, c in cards)
-    note = '<div class="muted" style="font-size:12px">仅汇总本事业部 P7+ 管理者风险分布，不展示具体员工信息。</div>'
+    note = f'<div class="muted" style="font-size:12px">仅汇总{esc(unit_label)} P7+ 管理者风险分布，不展示具体员工信息。</div>'
     return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>管理者流失风险分析 "
-            f"<small>本事业部 P7+ 管理者汇总 · 不展示个人信息</small></div>"
+            f"<small>{esc(unit_label)} P7+ 管理者汇总 · 不展示个人信息</small></div>"
             f'<div class="hero-stats" style="margin:4px 0 12px 0">{cards_html}</div>{note}</div>')
 
 
