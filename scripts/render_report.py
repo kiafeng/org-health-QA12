@@ -1596,9 +1596,10 @@ def vp_dimension_diagnosis(bu, comp, meta):
         comp_scores[dim] = cscore
         if score is None:
             rows.append(
-                f'<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#f9fafb;border-radius:10px;margin-bottom:10px">'
+                f'<div style="display:grid;grid-template-columns:50px 1fr 70px 160px 120px;align-items:center;gap:12px;padding:14px 16px;background:#f9fafb;border-radius:10px;margin-bottom:10px">'
                 f'<span style="width:36px;height:36px;border-radius:8px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#6b7280">{level}</span>'
-                f'<div style="flex:1"><div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div><div class="muted">数据不可用</div></div></div>')
+                f'<div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div>'
+                f'<div></div><div></div><div></div></div>')
             continue
         delta = (score - cscore) if cscore is not None else None
         if score >= 4.0 and (delta is None or delta >= -0.05):
@@ -1615,14 +1616,15 @@ def vp_dimension_diagnosis(bu, comp, meta):
         if delta is not None:
             dc = "#10b981" if delta > 0 else ("#ef4444" if delta < -0.05 else "#6b7280")
             da = "↑" if delta > 0 else ("↓" if delta < -0.05 else "—")
-            delta_html = f'<span style="color:{dc};font-size:13px;font-weight:700;margin-left:8px">{da} {abs(delta):.2f}</span>'
-        comp_html = f'<span style="font-size:13px;color:#6b7280;margin-left:10px">公司均值 {cscore:.2f}</span>' if cscore is not None else ''
+            delta_html = f'<span style="color:{dc};font-weight:700">{da} {abs(delta):.2f}</span>'
+        comp_html = f'<span>公司均值 {cscore:.2f}</span>' if cscore is not None else ''
         rows.append(
-            f'<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px">'
+            f'<div style="display:grid;grid-template-columns:50px 1fr 70px 160px 120px;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px">'
             f'<span style="width:36px;height:36px;border-radius:8px;background:{DIM_COLOR.get(dim,"#e5e7eb")};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151">{level}</span>'
-            f'<div style="flex:1"><div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div></div>'
-            f'<div style="display:flex;align-items:center;gap:6px"><span style="font-size:26px;font-weight:800;color:#1f2937">{score:.2f}</span>{comp_html}{delta_html}</div>'
-            f'<div>{tag_html}</div></div>')
+            f'<div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div>'
+            f'<div style="text-align:right"><span style="font-size:26px;font-weight:800;color:#1f2937">{score:.2f}</span></div>'
+            f'<div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#6b7280">{comp_html}{delta_html}</div>'
+            f'<div style="text-align:right">{tag_html}</div></div>')
         status_list.append((dim, score, status, is_bottleneck))
 
     # 层间差
@@ -1946,11 +1948,11 @@ def main():
 def _group_bar_chart(title, grp):
     """单一人口学维度的均分横向条形图（5 分制，与全篇统一）。"""
     items = sorted(((k, v) for k, v in grp.items()
-                    if v.get("mean") is not None),
-                   key=lambda kv: kv[1]["mean"])
+                    if v.get("grand_mean") is not None),
+                   key=lambda kv: kv[1]["grand_mean"])
     rows = []
     for k, v in items:
-        score = v["mean"]
+        score = v["grand_mean"]
         c = "#ef4444" if score < 3.5 else ("#f59e0b" if score < 4.0 else "#10b981")
         w = max(score / 5 * 100, 1)
         rows.append(
@@ -1970,7 +1972,7 @@ def _group_insight_text(demo):
     lowest = []
     for key, g in demo.items():
         for k, v in g.items():
-            score = v.get("mean")
+            score = v.get("grand_mean")
             if score is not None:
                 lowest.append((score, name_map.get(key, key), k, v.get("n")))
     if not lowest:
