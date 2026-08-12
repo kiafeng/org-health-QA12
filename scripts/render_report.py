@@ -1099,8 +1099,67 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
 
 
 def diagnosis_bars(company, meta):
-    """占位：原 12 题条形图已下线（仅 CEO 面板使用，CEO 已移除此卡片）。"""
-    return ""
+    """系统性 vs 局部问题：12 题得分横向条形图（低分红 / 中蓝 / 高绿；最低 3 题标 ▲；预警线 4.0、优秀线 4.5）。"""
+    qs = meta.get("questions", {})
+    short = meta.get("question_short", {})
+    items = []
+    for qid in qs:
+        qd = (company.get("questions") or {}).get(qid) or {}
+        mean = qd.get("mean")
+        if mean is None:
+            continue
+        items.append((qid, short.get(qid) or qs[qid], mean))
+    if not items:
+        return ""
+    items.sort(key=lambda x: x[2])
+    lowest = {it[0] for it in items[:3]}
+    items.sort(key=lambda x: int(x[0][1:]))
+
+    def col(v):
+        if v < 4.0:
+            return "#cf222e"
+        if v < 4.5:
+            return "#1f6feb"
+        return "#1a7f37"
+
+    grid = "display:grid;grid-template-columns:14px 32px 1fr 40% 42px;align-items:center;gap:6px;font-size:12px"
+    rows = [f'<div style="{grid}">']
+    for qid, label, mean in items:
+        c = col(mean)
+        w = mean / 5.0 * 100.0
+        mark = "▲" if qid in lowest else ""
+        rows.append(
+            f'<span style="color:#cf222e;font-size:11px">{mark}</span>'
+            f'<span style="color:#6b7280;font-weight:600">{esc(qid)}</span>'
+            f'<span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#374151" title="{esc(label)}">{esc(label)}</span>'
+            f'<span style="position:relative;height:14px;background:#f0f2f4;border-radius:7px">'
+            f'<span style="position:absolute;left:0;top:0;bottom:0;width:{w:.1f}%;background:{c};border-radius:7px"></span>'
+            f'<span style="position:absolute;top:-3px;bottom:-3px;left:80%;width:1px;background:#d4a72c"></span>'
+            f'<span style="position:absolute;top:-3px;bottom:-3px;left:90%;width:1px;background:#1a7f37"></span>'
+            f'</span>'
+            f'<span style="text-align:right;font-weight:700;color:{c}">{mean:.2f}</span>'
+        )
+    # 刻度轴（与条形轨道同列对齐）
+    rows.append('<span></span><span></span><span></span>')
+    rows.append('<span style="position:relative;height:12px;font-size:10px;color:#9ca3af">'
+                '<span style="position:absolute;left:0;transform:translateX(0)">0</span>'
+                '<span style="position:absolute;left:80%;transform:translateX(-50%);color:#d4a72c">4.0</span>'
+                '<span style="position:absolute;left:90%;transform:translateX(-50%);color:#1a7f37">4.5</span>'
+                '<span style="position:absolute;left:100%;transform:translateX(-100%)">5.0</span>'
+                '</span>')
+    rows.append('<span style="text-align:right;color:#9ca3af">分</span>')
+    # 图例（跨整行）
+    rows.append('<span style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:11px;color:#6b7280">'
+                '<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#cf222e;margin-right:4px;vertical-align:middle"></i>预警 &lt;4.0</span>'
+                '<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#1f6feb;margin-right:4px;vertical-align:middle"></i>良好 4.0–4.5</span>'
+                '<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#1a7f37;margin-right:4px;vertical-align:middle"></i>优秀 ≥4.5</span>'
+                '<span style="color:#cf222e">▲ 最低 3 题</span></span>')
+    # 说明（跨整行）
+    rows.append('<span style="grid-column:1/-1;margin-top:8px;font-size:11px;color:#6b7280;line-height:1.6">'
+                '公司整体最低分题为<span style="color:#cf222e;font-weight:600">系统性短板</span>，需在政策 / 机制层面统一干预；'
+                '若仅个别部门在某题显著偏低，则属<span style="color:#1f6feb;font-weight:600">局部问题</span>，请在经理人看板逐题下钻定位。</span>')
+    rows.append('</div>')
+    return "".join(rows)
 
 
 def vp_hero(bu, meta, all_bus, bu_name):
@@ -1421,10 +1480,13 @@ def render_ceo(data, insights):
     else:
         benchmark = DEFAULT_BENCHMARK
         benchmark_source = "缺省参考值（非真实行业调研 · 可在 meta[\"benchmark\"] 覆盖）"
-    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>四维度得分 "
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
              "<small>公司均值 vs 行业常模（5 分制）</small></div>" +
              dimension_radar(comp, meta, benchmark=benchmark, benchmark_label="行业常模",
                              benchmark_source=benchmark_source) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>系统性 vs 局部问题 "
+             "<small>12 题得分分布（5 分制）</small></div>" +
+             diagnosis_bars(comp, meta) + "</div>")
     body += "</div>"
 
     # 通栏：一级事业部横向对比
@@ -1591,7 +1653,7 @@ def render_unified(data, insights):
     vp_idx_file = f"VP索引_选择事业部{period_suffix}.html"
     mgr_idx_file = f"经理人索引_选择部门{period_suffix}.html"
     cards = [
-        ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、干预优先级矩阵、系统性 vs 局部问题诊断、风险仪表盘", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
+        ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
         ("👥", "经理人团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、30/60/90 天行动清单", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
