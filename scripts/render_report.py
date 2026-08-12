@@ -1693,15 +1693,15 @@ def render_vp(data, bu_name, insights):
     body += vp_hero(bu, meta, data["business_units"], bu_name, comp)
     # Gallup Q12 层次诊断（通栏：含 L4-L1、公司对比、诊断洞察）
     body += vp_dimension_diagnosis(bu, comp, meta)
-    # 并排：二级部门负责人效能象限 + 二级部门维度数据对比
-    body += "<div class='vp-grid'>"
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级部门负责人效能象限 "
+    # 并排：二级部门负责人效能象限 + 二级部门维度数据对比（强制两列，避免响应式变单列）
+    body += "<div style='display:grid;grid-template-columns:1.25fr 0.75fr;gap:16px;margin:16px 0;align-items:start'>"
+    body += (f"<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>二级部门负责人效能象限 "
              f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
              f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
     tree = [(f"{l2n}", l2, l2.get("percentile_vs_l2"), 0, None)
             for l2n, l2 in sorted(bu["l2_units"].items(),
                                   key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))]
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级部门维度数据对比 "
+    body += (f"<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>二级部门维度数据对比 "
              f"<small>含主管效能标签</small></div>"
              f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级部门')}</div></div>")
     body += "</div>"
