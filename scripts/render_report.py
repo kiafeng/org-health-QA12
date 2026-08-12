@@ -1193,10 +1193,10 @@ def vp_hero(bu, meta, all_bus, bu_name):
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
     stats = [
-        ("受访人数", str(bu["n"]), _benchmark_note(meta, "total_pct", bu["n"]), "#2563eb", ""),
+        ("受访人数", str(bu["n"]), "有效问卷", "#2563eb", ""),
         ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed", "textual"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981", ""),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981", ""),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
@@ -1204,8 +1204,7 @@ def vp_hero(bu, meta, all_bus, bu_name):
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, cls in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
             f'<div>{gauge}</div><div>{pos_html}</div>'
-            f'<div class="hero-stats">{stats_html}</div></div>'
-            f'<div class="hero-source">行业基准来源：{INDUSTRY_BENCHMARK_SOURCE}</div>')
+            f'<div class="hero-stats">{stats_html}</div></div>')
 
 
 def manager_hero(dept, meta):
@@ -1221,18 +1220,17 @@ def manager_hero(dept, meta):
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
     stats = [
-        ("团队人数", str(dept["n"]), _benchmark_note(meta, "total_pct", dept["n"]), "#2563eb"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981"),
+        ("团队人数", str(dept["n"]), "参与调研", "#2563eb"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981"),
         ("从业员工", f'{eng["neutral_pct"]:.0f}%', "个人均分3.0~3.9", "#f59e0b"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div>'
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 1fr">'
-            f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>'
-            f'<div class="hero-source">行业基准来源：{INDUSTRY_BENCHMARK_SOURCE}</div>')
+            f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>')
 
 
 def manager_team_snapshot(dept, meta):
