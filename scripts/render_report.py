@@ -2074,8 +2074,13 @@ def main():
             written.append(p)
     elif args.type == "unified":
         p = outdir / f"组织健康诊断QA14_统一入口总览{('-' + period) if period else ''}.html"
-        p.write_text(render_unified(data, ins_all), encoding="utf-8")
+        html = render_unified(data, ins_all)
+        p.write_text(html, encoding="utf-8")
         written.append(p)
+        # 同步写出 index.html，确保 CloudStudio 部署入口始终最新
+        idx = outdir / "index.html"
+        idx.write_text(html, encoding="utf-8")
+        written.append(idx)
     elif args.type == "vp_index":
         p = outdir / f"VP索引_选择事业部{('-' + period) if period else ''}.html"
         p.write_text(render_vp_index(data, ins_all), encoding="utf-8")
