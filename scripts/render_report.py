@@ -303,7 +303,11 @@ tr:hover td{background:#f9fafb}
 @media (max-width:780px){.entry-grid{grid-template-columns:1fr}.two-col{grid-template-columns:1fr}.vp-grid{grid-template-columns:1fr}.vp-cell .ladder .step{grid-template-columns:1fr;gap:6px}.vp-cell .ladder .side{width:auto;text-align:center;grid-column:auto}.vp-cell .ladder .block{justify-self:stretch;grid-column:auto}}
 .hero-banner{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 24px;box-shadow:var(--shadow-lg);margin-bottom:8px}
 .hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
-.hero-stat{text-align:left}
+.hero-stat{text-align:left;position:relative}
+.hero-stat .hs-tip{position:absolute;top:0;right:0;width:15px;height:15px;border-radius:50%;background:#e5e7eb;color:#6b7280;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:help}
+.hero-stat .hs-tip-pop{position:absolute;top:20px;right:0;width:210px;background:#1f2937;color:#fff;font-size:11px;line-height:1.55;padding:8px 10px;border-radius:8px;white-space:normal;text-align:left;opacity:0;visibility:hidden;transition:opacity .12s;z-index:30;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.hero-stat .hs-tip:hover .hs-tip-pop,.hero-stat .hs-tip:focus .hs-tip-pop{opacity:1;visibility:visible}
+.hero-stat .hs-tip-pop::after{content:"";position:absolute;top:-5px;right:5px;border:5px solid transparent;border-bottom-color:#1f2937}
 .hero-stat .hs-label{font-size:12px;color:var(--sub);margin-bottom:4px}
 .hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}.hero-stat .hs-value.textual{font-size:18px;letter-spacing:0}
 .hero-stat .hs-foot{font-size:11px;color:var(--sub);margin-top:2px}
@@ -744,6 +748,14 @@ def _benchmark_note(meta, kind, n_respondents=None):
     return ""
 
 
+def _help_tip(text):
+    """右上角小问号，hover / 聚焦时显示解释气泡。"""
+    if not text:
+        return ""
+    return (f'<span class="hs-tip" tabindex="0">?'
+            f'<span class="hs-tip-pop">{esc(text)}</span></span>')
+
+
 def hero_section(comp, meta, bus):
     """CEO看板 Hero 区域：仪表盘 + 关键指标横排"""
     period = meta.get("period") or ""
@@ -755,16 +767,22 @@ def hero_section(comp, meta, bus):
         dc = "#10b981" if delta > 0 else ("#ef4444" if delta < 0 else "#9ca3af")
         da = "▲" if delta > 0.04 else ("▼" if delta < -0.04 else "—")
         delta_html = f'<span style="color:{dc};font-size:14px;font-weight:700;margin-left:8px">{da} {delta:+.2f}</span>'
+    region = meta.get("benchmark_region") or DEFAULT_BENCHMARK_REGION
+    bm = INDUSTRY_BENCHMARK.get(region, INDUSTRY_BENCHMARK[DEFAULT_BENCHMARK_REGION])
     stats = [
-        ("受访人数", str(meta["total_respondents"]), _benchmark_note(meta, "total_pct", meta["total_respondents"]), "#2563eb"),
-        ("一级事业部", str(len(bus)), "参与调研", "#7c3aed"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b"),
+        ("受访人数", str(meta["total_respondents"]), _benchmark_note(meta, "total_pct", meta["total_respondents"]), "#2563eb", ""),
+        ("一级事业部", str(len(bus)), "参与调研", "#7c3aed", ""),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f"vs {bm['label']} {bm['engaged']}%",
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f"vs {bm['label']} {bm['disengaged']}%",
+         "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
+         "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
     ]
     stats_html = "".join(
-        f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
+        f'<div class="hero-stat">{_help_tip(tip)}'
+        f'<div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div>'
-        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
+        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, tip in stats)
     gauge = health_gauge(comp["grand_mean"], comp["grand_band"])
     return (f'<div class="hero-banner"><div>{gauge}{delta_html}</div>'
             f'<div class="hero-stats">{stats_html}</div></div>'
