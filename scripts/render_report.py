@@ -7,7 +7,7 @@
 三种看板（同一份数据，三种决策视角）:
   - CEO看板   (--type ceo)    : 战略投资视角 —— 救谁？改什么政策？看结构不看细节
   - VP看板    (--type vp)     : 经营与人才培养视角 —— 谁要辅导？资源给谁？看对比找抓手
-  - 经理人看板 (--type manager): 带教与行为改进视角 —— 我这季度做什么？看行为给动作
+  - 经理人（3级）看板 (--type manager): 带教与行为改进视角 —— 我这季度做什么？看行为给动作
 
 用法:
   python render_report.py --analysis analysis.json --type ceo    --outdir reports
@@ -1231,9 +1231,25 @@ def vp_hero(bu, meta, all_bus, bu_name, comp):
             f'<div class="hero-stats">{stats_html}</div></div>')
 
 
-def manager_hero(dept, meta):
-    """经理人看板 Hero：小仪表盘 + 关键指标"""
+def manager_hero(dept, meta, bu, l2, comp, bu_name, l2_name):
+    """经理人看板 Hero：小仪表盘 + 本部定位 + 关键指标（与 VP 看板同款结构）"""
     eng = dept["engagement"]
+    pctl = dept.get("percentile_vs_depts")
+    rank = dept.get("rank_in_bu")
+    n_depts = dept.get("n_depts_in_bu")
+    if pctl is not None:
+        if pctl >= 67:
+            pos, pc = ("引领者", "#10b981")
+        elif pctl >= 33:
+            pos, pc = ("中位水平", "#f59e0b")
+        else:
+            pos, pc = ("落后者", "#ef4444")
+        rank_txt = (f"BU 内排名 {rank}/{n_depts} · 超过 {pctl}% 部门"
+                    if rank else f"超过 {pctl}% 部门")
+        pos_html = (f'<div style="font-size:22px;font-weight:800;color:{pc}">{pos}</div>'
+                    f'<div style="font-size:11px;color:var(--sub)">{rank_txt}</div>')
+    else:
+        pos_html = '<div class="muted">排名数据不可用</div>'
     score = dept["grand_mean"]
     bnd = dept["grand_band"]
     color = BAND_COLOR.get(bnd, "#8b949e")
@@ -1243,18 +1259,28 @@ def manager_hero(dept, meta):
              f' stroke-dasharray="{2*3.14159*48:.1f}" stroke-dashoffset="{2*3.14159*48*(1-min(1,max(0,score/5))):.1f}" transform="rotate(-90 60 60)"/>'
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
+    ceng = comp["engagement"]
+    total = meta.get("total_employees")
+    if not total or total <= 0:
+        total = meta.get("total_respondents", 0)
+    n_pct = round(dept["n"] / total * 100, 1) if total > 0 else 0.0
     stats = [
-        ("团队人数", str(dept["n"]), "参与调研", "#2563eb"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981"),
-        ("从业员工", f'{eng["neutral_pct"]:.0f}%', "个人均分3.0~3.9", "#f59e0b"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
+        ("受访人数", str(dept["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
+        ("隶属结构", f"{bu_name} / {l2_name}", "", "#7c3aed", "textual"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
+         "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
+         "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
     ]
     stats_html = "".join(
-        f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
+        f'<div class="hero-stat">{_help_tip(tip)}'
+        f'<div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div>'
-        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
-    return (f'<div class="hero-banner" style="grid-template-columns:auto 1fr">'
-            f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>')
+        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, tip in stats)
+    return (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
+            f'<div>{gauge}</div><div>{pos_html}</div>'
+            f'<div class="hero-stats">{stats_html}</div></div>')
 
 
 def manager_team_snapshot(dept, meta):
@@ -1392,27 +1418,17 @@ def rootcause_conversation(dept, meta, ins):
 
 
 def action_timeline(ins, dept, meta):
-    """30/60/90天行动清单：有AI撰写则用，否则按薄弱题项自动生成"""
+    """30天建议：有AI撰写则用，否则按薄弱题项自动生成"""
     a30 = (ins or {}).get("actions_30")
-    a60 = (ins or {}).get("actions_60")
-    a90 = (ins or {}).get("actions_90")
     bots = [q for q in dept["bottom_questions"] if q in meta["questions"]]
     if not a30 and bots:
-        a30 = [f"针对 {q} {meta['question_short'][q]}：{ACTION_HINT[q]}" for q in bots[:2]]
+        a30 = [f"针对 {q} {meta['question_short'][q]}：{ACTION_HINT[q]}" for q in bots[:3]]
     if not a30:
         a30 = ["针对薄弱项制定具体改善动作"]
-    if not a60:
-        a60 = ["把30天动作嵌入日常：周会目标沟通、项目复盘、员工1对1中持续执行",
-               "复盘30天动作落地情况，调整未生效的，把已验证的固化为团队惯例"]
-    if not a90:
-        a90 = ["回看约定动作是否持续执行，员工是否感受到变化",
-               "通过1对1和团队会议校验改善效果，识别是否出现新问题"]
-    def tl(title, items, color):
-        li = "".join(f"<li>{esc(x)}</li>" for x in items)
-        return (f'<div class="tl-card" style="border-top:3px solid {color}">'
-                f'<div class="tl-h" style="color:{color}">{title}</div><ul>{li}</ul></div>')
-    return '<div class="timeline">' + tl("30 天 · 立即行动", a30, "#cf222e") + \
-           tl("60 天 · 巩固固化", a60, "#d4a72c") + tl("90 天 · 复盘放大", a90, "#1a7f37") + '</div>'
+    li = "".join(f"<li>{esc(x)}</li>" for x in a30)
+    return ('<div class="timeline">' +
+            f'<div class="tl-card" style="border-top:3px solid #cf222e">'
+            f'<div class="tl-h" style="color:#cf222e">30 天建议</div><ul>{li}</ul></div></div>')
 
 
 def employee_type_distribution(data, bu_name, meta):
@@ -1731,7 +1747,7 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
     dept = l2["departments"][dept_name]
     period = meta.get("period") or ""
     chain = f"{bu_name} / {l2_name} / {dept_name}"
-    body = header_html(f"经理人看板 · {dept_name}", "三级部门负责人视角 · 带教与行为改进",
+    body = header_html(f"经理人（3级） · {dept_name}", "三级部门负责人视角 · 带教与行为改进",
                        [period, f"受访 {dept['n']} 人"], chain=chain)
 
     if dept["suppressed"]:
@@ -1739,33 +1755,35 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
                  f'本团队参与人数少于 {meta["min_n"]} 人，为保护员工匿名性，不展示具体分数。'
                  "团队数据已计入上级汇总。建议下期提高参与率后查看完整得分卡。</div>")
         body += footnote(meta)
-        return page(f"经理人看板-{dept_name}", body)
+        return page(f"经理人（3级）-{dept_name}", body)
 
-    body += manager_hero(dept, meta)
+    body += manager_hero(dept, meta, bu, l2, comp, bu_name, l2_name)
     body += ('<div class="privacy-note"><b>使用提示</b>：本看板的分数分布与根因假设用于'
              '<b>诊断团队状态、改进你自己的管理行为</b>，请勿用于追查具体个人。'
              '样本&lt;6人时不显示分布，仅显示均值。</div>')
+    # 表头下第一块内容：逐题对比
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>逐题对比 "
+             "<small>团队 vs 二级 / 一级 / 公司 · 四重对照</small></div>"
+             + question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
+             + legend_html(meta) + "</div>")
     body += sec_head(1, "诊断洞察", "AI 基于数据的团队判断与建议")
     body += insights_html(insights)
-    # 2×2 卡片网格
+    # 2×2 卡片网格（无四象限）
     body += "<div class='vp-grid'>"
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>团队健康快照 "
              "<small>四类员工分布</small></div>" + manager_team_snapshot(dept, meta) + "</div>")
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>优先改善项 "
              "<small>根因假设与 1:1 指南</small></div>" + rootcause_conversation(dept, meta, insights) + "</div>")
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>30 / 60 / 90 天行动清单 "
-             "<small>按时间盒排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>30天建议 "
+             "<small>按薄弱项排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>")
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
              "<small>本部门 vs 公司（5 分制）</small></div>" +
              dimension_radar(dept, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
     body += "</div>"
-    # 通栏：逐题对比
-    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>参考：逐题对比 "
-             "<small>团队 vs 二级 / 一级 / 公司 · 四重对照</small></div>"
-             + question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
-             + legend_html(meta) + "</div>")
-    body += footnote(meta, "经理人看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
-    return page(f"经理人看板-{dept_name}{('-' + period) if period else ''}", body)
+    # 通栏：团队员工群体洞察（与 VP 同款，含敬业度/怠工与预警）
+    body += manager_group_insights(dept, meta)
+    body += footnote(meta, "经理人（3级）看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
+    return page(f"经理人（3级）-{dept_name}{('-' + period) if period else ''}", body)
 
 
 def render_unified(data, insights):
@@ -1781,7 +1799,7 @@ def render_unified(data, insights):
     cards = [
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
-        ("👥", "经理人团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、30/60/90 天行动清单", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
+        ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、团队员工群体洞察、30天建议", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
     grid = '<div class="entry-grid">'
     for icon, title, desc, tag, bg, col, href in cards:
@@ -1837,7 +1855,7 @@ def render_manager_index(data, insights):
     period = meta.get("period") or ""
     period_suffix = f"-{period}" if period else ""
     bus = data["business_units"]
-    body = (f'<div class="entry-head"><h1>选择部门 · 经理人看板</h1>'
+    body = (f'<div class="entry-head"><h1>选择部门 · 经理人（3级）看板</h1>'
             f'<div class="sub">共 {sum(len(l2["departments"]) for bn, bu in bus.items() for l2 in bu["l2_units"].values())} 个三级部门'
             f' · 按一级事业部 → 二级 → 三级部门列出</div></div>')
     for bn, bu in bus.items():
@@ -1856,7 +1874,7 @@ def render_manager_index(data, insights):
                     tag_color, tag_bg = tc
                     stats = (f'均值 <b>{d["grand_mean"]}</b> · {esc(d["grand_band"])}<br>'
                              f'敬业 {d["engagement"]["engaged_pct"]:.0f}% · 怠工 {d["engagement"]["disengaged_pct"]:.0f}%')
-                    mgr_file = f"经理人看板_{safe_name(bn)}_{safe_name(l2n)}_{safe_name(dn)}{period_suffix}.html"
+                    mgr_file = f"经理人（3级）_{safe_name(bn)}_{safe_name(l2n)}_{safe_name(dn)}{period_suffix}.html"
                 body += (f'<a class="entry-card" href="{mgr_file}" style="min-height:160px">'
                          f'<div class="entry-icon">👥</div>'
                          f'<div class="entry-ctitle">{esc(dn)}</div>'
@@ -1878,7 +1896,7 @@ def main():
     ap.add_argument("--analysis", required=True)
     ap.add_argument("--insights", help="AI 撰写的洞察 JSON (可选)")
     ap.add_argument("--type", required=True, choices=["ceo", "vp", "manager", "unified", "vp_index", "manager_index"],
-                    help="ceo=CEO看板; vp=VP看板; manager=经理人看板; unified=统一入口; vp_index=VP索引(选事业部); manager_index=经理人索引(选部门)")
+                    help="ceo=CEO看板; vp=VP看板; manager=经理人（3级）看板; unified=统一入口; vp_index=VP索引(选事业部); manager_index=经理人索引(选部门)")
     ap.add_argument("--target", default="all",
                     help='vp: 一级事业部名或 all; manager: "一级事业部/二级/三级部门" 或 all')
     ap.add_argument("--outdir", default="reports")
@@ -1933,7 +1951,7 @@ def main():
             if dn not in bu.get("l2_units", {}).get(l2n, {}).get("departments", {}):
                 raise SystemExit(f"未找到三级部门: {bn}/{l2n}/{dn}")
             key = f"{bn}/{l2n}/{dn}"
-            p = outdir / f"经理人看板_{safe_name(bn)}_{safe_name(l2n)}_{safe_name(dn)}{('-' + period) if period else ''}.html"
+            p = outdir / f"经理人（3级）_{safe_name(bn)}_{safe_name(l2n)}_{safe_name(dn)}{('-' + period) if period else ''}.html"
             p.write_text(render_manager(data, bn, l2n, dn, (ins_all.get("manager") or {}).get(key)),
                          encoding="utf-8")
             written.append(p)
@@ -1998,6 +2016,66 @@ def vp_group_insights(bu, meta):
     cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
     return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>本事业部员工群体洞察 "
             f"<small>各群体均分（5 分制 · 仅本事业部员工）</small></div>"
+            f"<div class='vp-grid'>{cells}</div>{ins}</div>")
+
+
+def _group_eng_chart(title, grp):
+    """单一人口学维度：各群体的均分 / 敬业度% / 怠工%，怠工≥20% 标「⚠预警」。"""
+    items = sorted(((k, v) for k, v in grp.items()
+                    if v.get("grand_mean") is not None),
+                   key=lambda kv: -(kv[1].get("disengaged_pct") or 0))
+    rows = []
+    for k, v in items:
+        gm = v["grand_mean"]
+        eng_p = v.get("engaged_pct") or 0
+        dis_p = v.get("disengaged_pct") or 0
+        warn = dis_p >= 20
+        warn_tag = (' <span style="color:#ef4444;font-weight:700">⚠ 预警</span>' if warn else "")
+        rows.append(
+            f'<div style="margin:7px 0">'
+            f'<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151">'
+            f'<span><b>{esc(k)}</b>{warn_tag} <span style="color:#9ca3af">n={v.get("n")}</span></span>'
+            f'<span style="color:#6b7280">均分 {gm:.2f}</span></div>'
+            f'<div style="position:relative;height:10px;background:#f0f2f4;border-radius:5px;margin-top:4px;overflow:hidden">'
+            f'<span style="position:absolute;left:0;top:0;bottom:0;width:{eng_p:.1f}%;background:#10b981"></span>'
+            f'<span style="position:absolute;top:0;bottom:0;width:{dis_p:.1f}%;background:#ef4444;'
+            f'left:{eng_p:.1f}%"></span></div>'
+            f'<div style="font-size:11px;color:#6b7280;margin-top:2px">敬业 {eng_p:.0f}% · 怠工 {dis_p:.0f}%</div>'
+            f'</div>')
+    return (f'<div style="margin:4px 0"><div style="font-size:13px;font-weight:600;color:#374151;'
+            f'margin-bottom:6px">{esc(title)}</div>{"".join(rows)}</div>')
+
+
+def manager_group_insights(dept, meta):
+    """团队员工群体洞察：本三级部门按司龄/职级/性别/绩效分组的敬业度与怠工（含预警）。"""
+    demo = dept.get("demographics") or {}
+    if not demo:
+        return ""
+    blocks = []
+    for title, key in (("按司龄", "tenure"), ("按职级", "level"),
+                       ("按性别", "gender"), ("按绩效", "perf")):
+        g = demo.get(key)
+        if g:
+            blocks.append(_group_eng_chart(title, g))
+    if not blocks:
+        return ""
+    # 跨维度找出怠工最高的群体作为预警洞察
+    worst = []
+    for key, g in demo.items():
+        for k, v in g.items():
+            dp = v.get("disengaged_pct")
+            if dp is not None:
+                worst.append((dp, k, v.get("n")))
+    worst.sort(reverse=True)
+    ins = ""
+    if worst and worst[0][0] >= 20:
+        dp, k, n = worst[0]
+        ins = (f'<div class="insight" style="border-left-color:#ef4444">怠工占比最高的群体为'
+                f'<b>「{esc(k)}」</b>（怠工 {dp:.0f}%，n={n}），已触发<b>员工预警</b>，'
+                f'建议优先排查其管理支持与团队归属短板。</div>')
+    cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>团队员工群体洞察 "
+            f"<small>各群体敬业度 / 怠工（仅本团队员工）</small></div>"
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
