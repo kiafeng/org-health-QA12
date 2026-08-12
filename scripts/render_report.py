@@ -1581,8 +1581,9 @@ def render_vp(data, bu_name, insights):
     # 2×2 卡片网格
     body += "<div class='vp-grid'>"
     # 左上：组织健康阶梯
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>组织健康阶梯 "
-             f"<small>四层维度 · 本事业部 vs 公司</small></div>{ladder_html(bu, meta, inline_text=True)}</div>")
+    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
+             "<small>本事业部 vs 公司（5 分制）</small></div>" +
+             dimension_radar(bu, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
     # 右上：经理人效能象限（仅图）
     body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>经理人效能象限 "
              f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
