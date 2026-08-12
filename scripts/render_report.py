@@ -1905,12 +1905,12 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
 
 
 def render_unified(data, insights):
-    """统一入口页：3张卡片 · CEO/VP索引/经理人索引"""
+    """统一入口页：4张卡片 · CEO/VP索引/经理人（2级）索引/经理人（3级）索引"""
     meta = data["meta"]
     period = meta.get("period") or ""
     period_suffix = f"-{period}" if period else ""
     body = (f'<div class="entry-head"><h1>组织健康度诊断</h1>'
-            f'<div class="sub">基于 {meta["total_respondents"]} 人调研数据 · 三层管理看板统一入口</div></div>')
+            f'<div class="sub">基于 {meta["total_respondents"]} 人调研数据 · 四层管理看板统一入口</div></div>')
     ceo_file = f"CEO看板_公司总览{period_suffix}.html"
     vp_idx_file = f"VP索引_选择事业部{period_suffix}.html"
     mgr_l2_idx_file = f"经理人（2级）索引_选择二级部门{period_suffix}.html"
@@ -1919,7 +1919,7 @@ def render_unified(data, insights):
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
         ("👤", "经理人（2级）部门报告", "各二级部门报告，内容与 VP 面板完全一致：层次诊断、三级部门负责人效能象限、维度对比、员工类型分布、员工群体洞察、管理者流失风险、行动建议", "经理人（2级）视角", "#e0f2fe", "#0369a1", mgr_l2_idx_file),
-        ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、团队员工群体洞察、30天建议", "经理人视角", "#dcfce7", "#15803d", mgr_idx_file),
+        ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、团队员工群体洞察、30天建议", "经理人（3级）视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
     grid = '<div class="entry-grid">'
     for icon, title, desc, tag, bg, col, href in cards:
