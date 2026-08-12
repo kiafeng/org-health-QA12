@@ -207,6 +207,8 @@ tr:hover td{background:#f9fafb}
 .insight{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:13px 17px;margin-bottom:10px;box-shadow:var(--shadow)}
 .insight ul{margin:8px 0 0 18px}
 .insight li{margin:5px 0}
+.hlk{color:#b45309;font-weight:700}
+.hl-bullet{color:var(--accent);font-weight:700;margin-right:4px}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .vp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;align-items:start}
 .vp-cell.vp-span{grid-column:1/-1}
@@ -631,19 +633,29 @@ def heat_table(rows_data, meta, row_label, extra_note="", show_tag=False):
     return f'<table><tr>{head}</tr>{"".join(body)}</table>{note}'
 
 
+def highlight_key(text):
+    """诊断洞察中高亮关键数据：数字/百分比、「」关键词、Q题号，使用特殊颜色标记。"""
+    s = esc(text)
+    # 「关键词」高亮
+    s = re.sub(r"「([^」]+)」", r'<span class="hlk">「\1」</span>', s)
+    # Q题号高亮
+    s = re.sub(r"(Q\d+)", r'<span class="hlk">\1</span>', s)
+    # 百分比 / 小数高亮
+    s = re.sub(r"(\d+\.\d+%?|\d+%)", r'<span class="hlk">\1</span>', s)
+    return s
+
+
 def insights_html(ins):
     if not ins:
         return ('<div class="insight muted">（诊断洞察未生成 — 可在 insights.json 中补充 '
-                "summary / findings / actions 后重新渲染）</div>")
+                "summary / findings 后重新渲染）</div>")
     parts = []
     if ins.get("summary"):
-        parts.append(f'<div class="insight"><b>总体判断</b><br>{esc(ins["summary"])}</div>')
+        parts.append(f'<div class="insight"><b>总体判断</b><br>{highlight_key(ins["summary"])}</div>')
     if ins.get("findings"):
-        lis = "".join(f"<li>{esc(x)}</li>" for x in ins["findings"])
-        parts.append(f'<div class="insight"><b>关键发现</b><ul>{lis}</ul></div>')
-    if ins.get("actions"):
-        lis = "".join(f"<li>{esc(x)}</li>" for x in ins["actions"])
-        parts.append(f'<div class="insight" style="border-left-color:#1a7f37"><b>建议行动</b><ul>{lis}</ul></div>')
+        # 关键发现最多 3 点
+        for x in ins["findings"][:3]:
+            parts.append(f'<div class="insight"><span class="hl-bullet">●</span> {highlight_key(x)}</div>')
     return "".join(parts)
 
 
@@ -1463,10 +1475,8 @@ def render_ceo(data, insights):
     body += sec_head(1, "诊断洞察", "AI 基于数据的总体判断与建议")
     body += insights_html(insights)
 
-    # 卡片网格：干预优先级矩阵与组织风险仪表盘为重点，全宽展示；阶梯与诊断并排
+    # 卡片网格：四维度得分与系统性诊断并排，组织风险仪表盘全宽
     body += "<div class='vp-grid'>"
-    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>干预优先级矩阵 "
-             "<small>健康度 × 影响面 · 确定有限注意力投往哪</small></div>" + scatter_matrix(bus, meta) + "</div>")
     benchmark = meta.get("benchmark")
     if benchmark:
         benchmark_source = meta.get("benchmark_source") or "用户提供行业常模"
@@ -1480,43 +1490,14 @@ def render_ceo(data, insights):
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>系统性 vs 局部问题 "
              "<small>政策级 / 管理辅导 · CEO独有判断</small></div>" + diagnosis_bars(comp, meta) + "</div>")
     body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>组织风险仪表盘 "
-             "<small>需关注信号一览</small></div>" + risk_dashboard(comp, bus, meta) + "</div>")
+             "<small>关键风险信号速览</small></div>" + risk_dashboard(comp, bus, meta) + "</div>")
     body += "</div>"
 
     # 通栏：一级事业部横向对比
     rows = sorted(bus.items(), key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))
-    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>一级事业部横向对比 "
-             "<small>内部百分位 = 综合得分超过多少百分比的同级单位</small></div>"
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>一级事业部横向对比</div>"
              + heat_table([(n, u, u.get("percentile_vs_bus")) for n, u in rows], meta, "一级事业部")
              + legend_html(meta) + "</div>")
-
-    # 通栏：高风险部门
-    risk = []
-    for bn, bu in bus.items():
-        for l2n, l2 in bu["l2_units"].items():
-            for dn, d in l2["departments"].items():
-                if not d["suppressed"] and d["grand_mean"] is not None and d["grand_mean"] < 4.0:
-                    risk.append((bn, l2n, dn, d))
-    if risk:
-        risk.sort(key=lambda x: x[3]["grand_mean"])
-        risk_tbl = ("<table><tr><th>一级事业部</th><th>二级单位</th><th>三级部门</th>"
-                    "<th class='num'>人数</th><th class='num'>综合均值</th><th>最弱两项</th>"
-                    "<th class='num'>怠工占比</th></tr>")
-        for bn, l2n, dn, d in risk:
-            weak = "、".join(f'{q} {meta["question_short"][q]}({d["questions"][q]["mean"]})'
-                             for q in d["bottom_questions"])
-            risk_tbl += (f"<tr><td>{esc(bn)}</td><td>{esc(l2n)}</td><td><b>{esc(dn)}</b></td>"
-                         f"<td class='num'>{d['n']}</td>"
-                         f"<td class='num' style='color:#ef4444;font-weight:700'>{d['grand_mean']}</td>"
-                         f"<td>{esc(weak)}</td><td class='num'>{d['engagement']['disengaged_pct']:.0f}%</td></tr>")
-        risk_tbl += "</table>"
-        body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>高风险部门（三级部门） "
-                 "<small>综合均值 < 4.0 · 需 CEO 直接关注</small></div>" + risk_tbl + "</div>")
-
-    # 折叠：逐题得分卡
-    body += ("<details class='vfold'><summary>展开：逐题得分卡 · 公司整体逐题明细</summary>"
-             "<div class='vfold-body'>"
-             + question_table(comp, meta, [], []) + legend_html(meta) + "</div></details>")
 
     body += footnote(meta)
     return page(f"CEO看板-公司总览{('-' + period) if period else ''}", body)
