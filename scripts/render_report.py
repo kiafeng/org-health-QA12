@@ -294,7 +294,7 @@ tr:hover td{background:#f9fafb}
 .hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
 .hero-stat{text-align:left}
 .hero-stat .hs-label{font-size:12px;color:var(--sub);margin-bottom:4px}
-.hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}.hero-stat .hs-value.textual{font-size:18px;letter-spacing:0}
 .hero-stat .hs-foot{font-size:11px;color:var(--sub);margin-top:2px}
 .risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:14px 0}
 .risk-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);border-top:4px solid #ef4444}
@@ -1179,15 +1179,15 @@ def vp_hero(bu, meta, all_bus, bu_name):
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
     stats = [
-        ("受访人数", str(bu["n"]), "有效问卷", "#2563eb"),
-        ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
+        ("受访人数", str(bu["n"]), "有效问卷", "#2563eb", ""),
+        ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed", "textual"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981", ""),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
-        f'<div class="hs-value" style="color:{c}">{v}</div>'
-        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
+        f'<div class="hs-value {cls}" style="color:{c}">{v}</div>'
+        f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, cls in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
             f'<div>{gauge}</div><div>{pos_html}</div>'
             f'<div class="hero-stats">{stats_html}</div></div>')
