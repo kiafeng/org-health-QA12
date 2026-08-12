@@ -312,6 +312,10 @@ tr:hover td{background:#f9fafb}
 .hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}.hero-stat .hs-value.textual{font-size:18px;letter-spacing:0}
 .hero-stat .hs-foot{font-size:11px;color:var(--sub);margin-top:2px}
 .hero-source{font-size:11px;color:var(--sub);text-align:right;margin:2px 4px 10px 0}
+.db-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.db-table th{background:#f8fafc;color:#6b7280;font-weight:600;padding:8px 10px;text-align:left;border-bottom:1px solid #e5e7eb}
+.db-table td{padding:8px 10px;border-bottom:1px solid #f3f4f6;color:#374151}
+.db-table tbody tr:hover td{background:#fafbfc}
 .etype-chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);margin:10px 0}
 .etype-head{margin-bottom:16px}
 .etype-title{font-size:16px;font-weight:700}
@@ -1570,9 +1574,6 @@ def render_vp(data, bu_name, insights):
     body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
     body += vp_hero(bu, meta, data["business_units"], bu_name)
-    # 诊断洞察
-    body += sec_head(1, "诊断洞察", "AI 基于数据的本部判断与建议")
-    body += insights_html(insights)
     # 2×2 卡片网格
     body += "<div class='vp-grid'>"
     # 左上：组织健康阶梯
@@ -1583,25 +1584,22 @@ def render_vp(data, bu_name, insights):
     body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>经理人效能象限 "
              f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
              f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
-    # 左下：二级/三级部门维度数据对比
-    tree = []
-    for l2n, l2 in sorted(bu["l2_units"].items(),
-                          key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0))):
-        tree.append((f"▾ {l2n}", l2, l2.get("percentile_vs_l2"), 0, None))
-        for dn, d in sorted(l2["departments"].items(),
-                            key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0))):
-            tree.append((dn, d, d.get("percentile_vs_depts"), 1, d.get("manager_tag")))
-    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级/三级部门维度数据对比 "
+    # 左下：二级部门维度数据对比（仅二级，不展开三级）
+    tree = [(f"{l2n}", l2, l2.get("percentile_vs_l2"), 0, None)
+            for l2n, l2 in sorted(bu["l2_units"].items(),
+                                  key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))]
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级部门维度数据对比 "
              f"<small>含主管效能标签</small></div>"
-             f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级 / 三级部门', '', show_tag=True)}</div></div>")
+             f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级部门')}</div></div>")
     # 右下：员工类型分布
     body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>员工类型分布 "
              f"<small>消极/中立/激发/高效 · 按消极占比降序</small></div>"
              f"{employee_type_distribution(data, bu_name, meta)}</div>")
     body += "</div>"
-    # 通栏：经理效能矩阵解读（四画像卡 + 解读表）
-    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>经理效能矩阵解读</div>"
-             + manager_quadrant_html(data, bu_name, meta, part="cards") + "</div>")
+    # 通栏：员工群体洞察（新增）
+    body += vp_group_insights(bu, meta)
+    # 通栏：管理者流失风险分析（新增）
+    body += vp_manager_risk(bu, meta)
     # 通栏：VP 行动建议
     body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>VP 行动建议</div>"
              + vp_action_summary(bu, data, meta) + "</div>")
@@ -1832,6 +1830,98 @@ def main():
 
     for p in written:
         print("OK", p)
+
+
+# ---------- VP 看板新增模块：员工群体洞察 / 管理者流失风险 ----------
+
+def _group_bar_chart(title, grp):
+    """单一人口学维度的健康度横向条形图（0-100）。"""
+    items = sorted(((k, v) for k, v in grp.items()
+                    if v.get("health_index") is not None),
+                   key=lambda kv: kv[1]["health_index"])
+    rows = []
+    for k, v in items:
+        hi = v["health_index"]
+        c = "#ef4444" if hi < 60 else ("#f59e0b" if hi < 80 else "#10b981")
+        w = max(hi, 1)
+        rows.append(
+            f'<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">'
+            f'<span style="width:88px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{esc(k)}</span>'
+            f'<span style="position:relative;flex:1;height:14px;background:#f0f2f4;border-radius:7px">'
+            f'<span style="position:absolute;left:0;top:0;bottom:0;width:{w:.1f}%;background:{c};border-radius:7px"></span></span>'
+            f'<span style="width:40px;text-align:right;color:{c};font-weight:700">{hi:.0f}</span>'
+            f'<span style="width:46px;color:#9ca3af">n={v.get("n")}</span></div>')
+    return (f'<div style="margin:4px 0"><div style="font-size:13px;font-weight:600;color:#374151;'
+            f'margin-bottom:5px">{esc(title)}</div>{"".join(rows)}</div>')
+
+
+def _group_insight_text(demo):
+    """跨维度找出健康度最低的群体，生成关键洞察。"""
+    name_map = {"gender": "性别", "level": "职级", "tenure": "司龄", "perf": "绩效"}
+    lowest = []
+    for key, g in demo.items():
+        for k, v in g.items():
+            hi = v.get("health_index")
+            if hi is not None:
+                lowest.append((hi, name_map.get(key, key), k, v.get("n")))
+    if not lowest:
+        return ""
+    lowest.sort()
+    hi, dim, k, n = lowest[0]
+    return (f'<div class="insight" style="border-left-color:#ef4444">健康度最低的群体为'
+            f'<b>「{esc(k)}」</b>（{esc(dim)}，健康度 {hi:.0f}，n={n}），'
+            f'建议优先排查其管理支持与团队归属短板，针对性补强。</div>')
+
+
+def vp_group_insights(bu, meta):
+    """员工群体洞察：按司龄 / 职级 / 性别 / 绩效分组的健康度条形图 + 关键洞察。"""
+    demo = bu.get("demographics") or {}
+    blocks = []
+    for title, key in (("按司龄", "tenure"), ("按职级", "level"),
+                       ("按性别", "gender"), ("按绩效", "perf")):
+        g = demo.get(key)
+        if g:
+            blocks.append(_group_bar_chart(title, g))
+    if not blocks:
+        return ""
+    ins = _group_insight_text(demo)
+    cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>员工群体洞察 "
+            f"<small>各群体健康度（0-100）</small></div>"
+            f"<div class='vp-grid'>{cells}</div>{ins}</div>")
+
+
+def vp_manager_risk(bu, meta):
+    """管理者流失风险分析：指标卡 + 高危名单表（P7+ 管理者，按健康度升序）。"""
+    mgr = bu.get("managers") or {"summary": {}, "managers": []}
+    s = mgr.get("summary") or {}
+    ms = mgr.get("managers") or []
+    rc = {"高危": "#ef4444", "需关注": "#f59e0b", "稳定": "#10b981"}
+    cards = [
+        ("高危管理者", s.get("high_risk", 0), "#ef4444"),
+        ("需关注", s.get("watch", 0), "#f59e0b"),
+        ("稳定", s.get("stable", 0), "#10b981"),
+        ("管理者风险率", f"{s.get('risk_rate', 0):.0f}%", "#7c3aed"),
+    ]
+    cards_html = "".join(
+        f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
+        f'<div class="hs-value" style="color:{c}">{v}</div></div>' for l, v, c in cards)
+    if not ms:
+        table = '<div class="muted">本事业部暂无 P7+ 管理者数据</div>'
+    else:
+        rows = "".join(
+            f'<tr><td>{esc(m.get("email") or "")}</td><td>{esc(m.get("level") or "")}</td>'
+            f'<td>{esc(m.get("tenure") or "")}</td><td>{esc(m.get("perf") or "")}</td>'
+            f'<td style="text-align:right;font-weight:700">{m.get("health_index")}</td>'
+            f'<td style="text-align:center;color:{rc.get(m.get("risk"), "#6b7280")};font-weight:700">{esc(m.get("risk"))}</td></tr>'
+            for m in ms)
+        table = (f'<table class="db-table"><thead><tr>'
+                 f'<th>管理者</th><th>职级</th><th>司龄</th><th>绩效</th>'
+                 f'<th style="text-align:right">敬业度</th><th style="text-align:center">风险</th>'
+                 f'</tr></thead><tbody>{rows}</tbody></table>')
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>管理者流失风险分析 "
+            f"<small>P7+ 管理者 · 按健康度升序</small></div>"
+            f'<div class="hero-stats" style="margin:4px 0 12px 0">{cards_html}</div>{table}</div>')
 
 
 if __name__ == "__main__":

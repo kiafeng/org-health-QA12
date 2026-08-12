@@ -15,6 +15,7 @@
 """
 import argparse
 import json
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -62,7 +63,7 @@ Q_KEYWORDS = {
 # 运行时按实际数据识别题项与组织列（见 detect_schema）
 QPRESENT = []    # 实际存在的题项 canonical id 列表
 QDETECT = {}     # canonical id -> 原始列名
-ORG = {"bu": None, "l2": None, "dept": None}
+ORG = {"bu": None, "l2": None, "dept": None, "gender": None, "level": None, "perf": None, "tenure": None, "email": None}
 
 def detect_schema(rows):
     """从首行表头识别题项列(Q1..Q12 按关键词)与组织列(一级/二级/三级)"""
@@ -87,7 +88,7 @@ def detect_schema(rows):
                 if any(kw in h for kw in kws):
                     qdet[q] = h
                     break
-    org = {"bu": None, "l2": None, "dept": None}
+    org = {"bu": None, "l2": None, "dept": None, "gender": None, "level": None, "perf": None, "tenure": None, "email": None}
     for h in header:
         if org["dept"] is None and "三级" in h:
             org["dept"] = h
@@ -95,6 +96,16 @@ def detect_schema(rows):
             org["l2"] = h
         elif org["bu"] is None and "一级" in h:
             org["bu"] = h
+        elif org["gender"] is None and "性别" in h:
+            org["gender"] = h
+        elif org["level"] is None and "职级" in h:
+            org["level"] = h
+        elif org["perf"] is None and "绩效" in h:
+            org["perf"] = h
+        elif org["tenure"] is None and "司龄" in h:
+            org["tenure"] = h
+        elif org["email"] is None and ("邮箱" in h or "email" in h.lower()):
+            org["email"] = h
     return qdet, org
 
 # 5 分制阈值
@@ -164,7 +175,12 @@ def clean(rows):
         if all(scores[q] is None for q in QPRESENT):
             warnings.append(f"第{i}行: 全部题目未作答，已跳过")
             continue
-        valid.append({"bu": bu, "l2": l2, "dept": dept, "scores": scores})
+        valid.append({"bu": bu, "l2": l2, "dept": dept, "scores": scores,
+                      "gender": str(row.get(ORG["gender"]) or "").strip() or None,
+                      "level": str(row.get(ORG["level"]) or "").strip() or None,
+                      "perf": str(row.get(ORG["perf"]) or "").strip() or None,
+                      "tenure": str(row.get(ORG["tenure"]) or "").strip() or None,
+                      "email": (str(row.get(ORG["email"])).strip() if ORG["email"] else None)})
     return valid, warnings
 
 def agg_unit(members, min_n):
@@ -228,7 +244,84 @@ def agg_unit(members, min_n):
                     key=lambda q: q_stats[q]["mean"])
     unit["bottom_questions"] = ranked[:2]
     unit["top_questions"] = ranked[-2:][::-1]
+    # 人口学分组聚合 + 管理者流失风险名单
+    unit["demographics"] = agg_demographics(members)
+    unit["managers"] = agg_managers(members)
     return unit
+
+
+def _pm(m):
+    """个人均分（该员工所有有效题项均值）"""
+    vals = [v for v in m["scores"].values() if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
+def _level_num(level):
+    if not level:
+        return 0
+    m = re.search(r"\d+", str(level))
+    return int(m.group()) if m else 0
+
+
+def agg_demographics(members):
+    """按 性别 / 职级 / 司龄 / 绩效 分组的健康度聚合（用于 VP 看板「员工群体洞察」）"""
+    fields = {"gender": "gender", "level": "level", "tenure": "tenure", "perf": "perf"}
+    out = {}
+    for gname, attr in fields.items():
+        buckets = {}
+        for m in members:
+            k = m.get(attr)
+            if not k:
+                continue
+            buckets.setdefault(k, []).append(m)
+        grp = {}
+        for k, ms in buckets.items():
+            pms = [v for v in (_pm(m) for m in ms) if v is not None]
+            n = len(ms)
+            if not pms:
+                continue
+            gm = sum(pms) / len(pms)
+            eng = sum(1 for v in pms if v >= ENGAGED_MIN)
+            dis = sum(1 for v in pms if v < DISENGAGED_MAX)
+            grp[k] = {
+                "n": n,
+                "grand_mean": r2(gm),
+                "health_index": r2(gm / 5 * 100),
+                "engaged_pct": r2(100 * eng / n),
+                "disengaged_pct": r2(100 * dis / n),
+            }
+        out[gname] = grp
+    return out
+
+
+def agg_managers(members):
+    """P7+ 管理者流失风险名单（用于 VP 看板「管理者流失风险分析」）。
+    健康度 = 个人均分/5*100；<60 高危 / 60-80 需关注 / >=80 稳定。"""
+    mg = [m for m in members if _level_num(m.get("level")) >= 7]
+    out = []
+    for m in mg:
+        pmv = _pm(m)
+        hi = round(pmv / 5 * 100, 1) if pmv is not None else None
+        if hi is None or hi >= 80:
+            risk = "稳定"
+        elif hi >= 60:
+            risk = "需关注"
+        else:
+            risk = "高危"
+        out.append({
+            "email": m.get("email"), "level": m.get("level"), "tenure": m.get("tenure"),
+            "perf": m.get("perf"), "mean": r2(pmv), "health_index": hi, "risk": risk,
+        })
+    out.sort(key=lambda x: (x["health_index"] is None, x["health_index"] or 0))  # 健康度升序 → 风险高在前
+    total = len(out)
+    summary = {
+        "total": total,
+        "high_risk": sum(1 for x in out if x["risk"] == "高危"),
+        "watch": sum(1 for x in out if x["risk"] == "需关注"),
+        "stable": sum(1 for x in out if x["risk"] == "稳定"),
+        "risk_rate": r2(100 * sum(1 for x in out if x["risk"] == "高危") / total) if total else None,
+    }
+    return {"summary": summary, "managers": out}
 
 def pct_rank(value, population):
     """value 在 population 中的百分位 (0-100, 打败了多少同类单位)"""
