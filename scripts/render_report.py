@@ -1301,8 +1301,8 @@ def manager_team_snapshot(dept, meta):
                      for k, v in (("neg", neg), ("neu", neu), ("inspired", ins), ("high", hi))
                      if v >= 0.5)
     neg_cls = " high" if neg >= 30 else ""
-    return (f'<div class="etype-chart"><div class="etype-head"><div class="etype-title">团队员工类型</div>'
-            f'<div class="etype-sub">按个人均分估算 · 消极≥30%标红</div></div>'
+    return (f'<div class="etype-chart"><div class="etype-head"><div class="etype-title">员工类型分布</div>'
+            f'<div class="etype-sub">本团队四类员工 · 按个人均分估算 · 消极≥30%标红</div></div>'
             f'<div class="etype-bar-wrap" style="height:30px">{segs}</div>'
             f'<div class="etype-neg{neg_cls}" style="margin-top:8px;font-size:13px">消极占比 {neg:.0f}%</div>'
             f'<div class="etype-legend" style="margin-top:8px">{legend}</div></div>')
@@ -1766,22 +1766,18 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
              "<small>团队 vs 二级 / 一级 / 公司 · 四重对照</small></div>"
              + question_table(dept, meta, [l2, bu, comp], [l2_name, bu_name, "公司整体"])
              + legend_html(meta) + "</div>")
-    body += sec_head(1, "诊断洞察", "AI 基于数据的团队判断与建议")
-    body += insights_html(insights)
-    # 2×2 卡片网格（无四象限）
-    body += "<div class='vp-grid'>"
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>团队健康快照 "
-             "<small>四类员工分布</small></div>" + manager_team_snapshot(dept, meta) + "</div>")
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>优先改善项 "
-             "<small>根因假设与 1:1 指南</small></div>" + rootcause_conversation(dept, meta, insights) + "</div>")
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>30天建议 "
-             "<small>按薄弱项排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>")
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
-             "<small>本部门 vs 公司（5 分制）</small></div>" +
-             dimension_radar(dept, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
-    body += "</div>"
-    # 通栏：团队员工群体洞察（与 VP 同款，含敬业度/怠工与预警）
+    # 员工类型分布（与 VP 面板该区块标题一致）
+    body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>员工类型分布 "
+             "<small>本团队四类员工分布</small></div>" + manager_team_snapshot(dept, meta) + "</div>")
+    # 团队员工群体洞察（与 VP 同款：均分条形图 + 关键洞察，5 分制）
     body += manager_group_insights(dept, meta)
+    # 最后：优先改善项 + 30天建议 并排展示
+    body += ("<div style='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;align-items:start'>"
+             "<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>优先改善项 "
+             "<small>根因假设与 1:1 指南</small></div>" + rootcause_conversation(dept, meta, insights) + "</div>"
+             "<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>30天建议 "
+             "<small>按薄弱项排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>"
+             "</div>")
     body += footnote(meta, "经理人（3级）看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
     return page(f"经理人（3级）-{dept_name}{('-' + period) if period else ''}", body)
 
@@ -2019,63 +2015,21 @@ def vp_group_insights(bu, meta):
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
-def _group_eng_chart(title, grp):
-    """单一人口学维度：各群体的均分 / 敬业度% / 怠工%，怠工≥20% 标「⚠预警」。"""
-    items = sorted(((k, v) for k, v in grp.items()
-                    if v.get("grand_mean") is not None),
-                   key=lambda kv: -(kv[1].get("disengaged_pct") or 0))
-    rows = []
-    for k, v in items:
-        gm = v["grand_mean"]
-        eng_p = v.get("engaged_pct") or 0
-        dis_p = v.get("disengaged_pct") or 0
-        warn = dis_p >= 20
-        warn_tag = (' <span style="color:#ef4444;font-weight:700">⚠ 预警</span>' if warn else "")
-        rows.append(
-            f'<div style="margin:7px 0">'
-            f'<div style="display:flex;justify-content:space-between;font-size:12px;color:#374151">'
-            f'<span><b>{esc(k)}</b>{warn_tag} <span style="color:#9ca3af">n={v.get("n")}</span></span>'
-            f'<span style="color:#6b7280">均分 {gm:.2f}</span></div>'
-            f'<div style="position:relative;height:10px;background:#f0f2f4;border-radius:5px;margin-top:4px;overflow:hidden">'
-            f'<span style="position:absolute;left:0;top:0;bottom:0;width:{eng_p:.1f}%;background:#10b981"></span>'
-            f'<span style="position:absolute;top:0;bottom:0;width:{dis_p:.1f}%;background:#ef4444;'
-            f'left:{eng_p:.1f}%"></span></div>'
-            f'<div style="font-size:11px;color:#6b7280;margin-top:2px">敬业 {eng_p:.0f}% · 怠工 {dis_p:.0f}%</div>'
-            f'</div>')
-    return (f'<div style="margin:4px 0"><div style="font-size:13px;font-weight:600;color:#374151;'
-            f'margin-bottom:6px">{esc(title)}</div>{"".join(rows)}</div>')
-
-
 def manager_group_insights(dept, meta):
-    """团队员工群体洞察：本三级部门按司龄/职级/性别/绩效分组的敬业度与怠工（含预警）。"""
+    """团队员工群体洞察：与 VP 同款——按司龄/职级/性别/绩效分组的均分条形图（5 分制）+ 关键洞察。"""
     demo = dept.get("demographics") or {}
-    if not demo:
-        return ""
     blocks = []
     for title, key in (("按司龄", "tenure"), ("按职级", "level"),
                        ("按性别", "gender"), ("按绩效", "perf")):
         g = demo.get(key)
         if g:
-            blocks.append(_group_eng_chart(title, g))
+            blocks.append(_group_bar_chart(title, g))
     if not blocks:
         return ""
-    # 跨维度找出怠工最高的群体作为预警洞察
-    worst = []
-    for key, g in demo.items():
-        for k, v in g.items():
-            dp = v.get("disengaged_pct")
-            if dp is not None:
-                worst.append((dp, k, v.get("n")))
-    worst.sort(reverse=True)
-    ins = ""
-    if worst and worst[0][0] >= 20:
-        dp, k, n = worst[0]
-        ins = (f'<div class="insight" style="border-left-color:#ef4444">怠工占比最高的群体为'
-                f'<b>「{esc(k)}」</b>（怠工 {dp:.0f}%，n={n}），已触发<b>员工预警</b>，'
-                f'建议优先排查其管理支持与团队归属短板。</div>')
+    ins = _group_insight_text(demo)
     cells = "".join(f'<div class="vp-cell" style="padding:12px 16px">{b}</div>' for b in blocks)
     return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>团队员工群体洞察 "
-            f"<small>各群体敬业度 / 怠工（仅本团队员工）</small></div>"
+            f"<small>各群体均分（5 分制 · 仅本团队员工）</small></div>"
             f"<div class='vp-grid'>{cells}</div>{ins}</div>")
 
 
