@@ -40,6 +40,15 @@ DIM_ORDER = ["成长发展", "团队归属", "管理支持", "基本需求"]  # 
 # 默认行业常模（5 分制）。当数据/配置未提供常模时作为占位参考；用户可通过 meta["benchmark"] 覆盖。
 DEFAULT_BENCHMARK = {"基本需求": 4.05, "管理支持": 3.85, "团队归属": 3.75, "成长发展": 3.65}
 DIM_COLOR = {"基本需求": "#a7c0cb", "管理支持": "#bbbbe0", "团队归属": "#e2bcbc", "成长发展": "#e3cf9c"}
+
+# 敬业/怠工行业基准（盖洛普全球常模 2023-2024）
+INDUSTRY_BENCHMARK = {
+    "global": {"engaged": 23, "disengaged": 18, "label": "全球均值"},
+    "china":  {"engaged": 15, "disengaged": 25, "label": "中国均值"},
+    "tech":   {"engaged": "20-30", "disengaged": "15-20", "label": "科技/互联网"},
+}
+INDUSTRY_BENCHMARK_SOURCE = "盖洛普全球常模（2023-2024）"
+DEFAULT_BENCHMARK_REGION = "tech"  # 科技/互联网（公司所属行业）
 SCALE_MAX = 5.0
 
 # 经理人看板：题项三块分组（按"经理人能直接动什么"重组，而非问卷原始四维度）
@@ -298,11 +307,7 @@ tr:hover td{background:#f9fafb}
 .hero-stat .hs-label{font-size:12px;color:var(--sub);margin-bottom:4px}
 .hero-stat .hs-value{font-size:26px;font-weight:800;letter-spacing:-.5px}.hero-stat .hs-value.textual{font-size:18px;letter-spacing:0}
 .hero-stat .hs-foot{font-size:11px;color:var(--sub);margin-top:2px}
-.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:14px 0}
-.risk-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);border-top:4px solid #ef4444}
-.risk-card .rc-label{font-size:12px;color:var(--sub);margin-bottom:6px}
-.risk-card .rc-value{font-size:32px;font-weight:800;color:#ef4444;letter-spacing:-1px}
-.risk-card .rc-foot{font-size:11px;color:var(--sub);margin-top:4px}
+.hero-source{font-size:11px;color:var(--sub);text-align:right;margin:2px 4px 10px 0}
 .etype-chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);margin:10px 0}
 .etype-head{margin-bottom:16px}
 .etype-title{font-size:16px;font-weight:700}
@@ -331,7 +336,7 @@ tr:hover td{background:#f9fafb}
 .radar-legend span{display:inline-flex;align-items:center;gap:6px}
 .radar-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;flex:none}
 .radar-src{font-size:11px;color:#9ca3af;text-align:center;margin-top:6px;line-height:1.5}
-@media print{body{background:#fff}.page{padding:10mm}.report-head,.hero-banner,.card,.insight,.hl,.qcell,.block-card,.tl-card,.pos-card,.risk-card{box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@media print{body{background:#fff}.page{padding:10mm}.report-head,.hero-banner,.card,.insight,.hl,.qcell,.block-card,.tl-card,.pos-card{box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 """
 
@@ -716,6 +721,29 @@ def health_gauge(score, band_name, max_score=5.0):
     </div>'''
 
 
+def _benchmark_note(meta, kind, n_respondents=None):
+    """生成与行业基准的对比备注。
+    kind: 'engaged' / 'disengaged' / 'total_pct'
+    meta 中可设置 benchmark_region ('global'/'china'/'tech')。
+    """
+    region = meta.get("benchmark_region") or DEFAULT_BENCHMARK_REGION
+    bm = INDUSTRY_BENCHMARK.get(region, INDUSTRY_BENCHMARK[DEFAULT_BENCHMARK_REGION])
+    if kind == "engaged":
+        return f"个人均分≥4.0 · vs {bm['label']} {bm['engaged']}%"
+    if kind == "disengaged":
+        return f"个人均分<3.0 · vs {bm['label']} {bm['disengaged']}%"
+    if kind == "total_pct":
+        total = meta.get("total_employees")
+        if not total or total <= 0:
+            total = n_respondents or meta.get("total_respondents", 0)
+        n = n_respondents if n_respondents is not None else meta.get("total_respondents", 0)
+        if total > 0:
+            pct = round(n / total * 100, 1)
+            return f"占员工总数 {pct}%"
+        return "占员工总数 —"
+    return ""
+
+
 def hero_section(comp, meta, bus):
     """CEO看板 Hero 区域：仪表盘 + 关键指标横排"""
     period = meta.get("period") or ""
@@ -728,10 +756,10 @@ def hero_section(comp, meta, bus):
         da = "▲" if delta > 0.04 else ("▼" if delta < -0.04 else "—")
         delta_html = f'<span style="color:{dc};font-size:14px;font-weight:700;margin-left:8px">{da} {delta:+.2f}</span>'
     stats = [
-        ("受访人数", str(meta["total_respondents"]), "有效问卷", "#2563eb"),
+        ("受访人数", str(meta["total_respondents"]), _benchmark_note(meta, "total_pct", meta["total_respondents"]), "#2563eb"),
         ("一级事业部", str(len(bus)), "参与调研", "#7c3aed"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b"),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
@@ -739,7 +767,8 @@ def hero_section(comp, meta, bus):
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
     gauge = health_gauge(comp["grand_mean"], comp["grand_band"])
     return (f'<div class="hero-banner"><div>{gauge}{delta_html}</div>'
-            f'<div class="hero-stats">{stats_html}</div></div>')
+            f'<div class="hero-stats">{stats_html}</div></div>'
+            f'<div class="hero-source">行业基准来源：{INDUSTRY_BENCHMARK_SOURCE}</div>')
 
 
 def scatter_matrix(bus, meta):
@@ -1138,33 +1167,6 @@ def diagnosis_bars(company, meta):
             f'<div class="legend">按 5 分制绘制 · 最低 3 道题已标 ▲ · 黄色虚线=预警线(4.0) · 绿色虚线=优秀线(4.5)</div>')
 
 
-
-def risk_dashboard(company, bus, meta):
-    """组织风险仪表盘：红色主题告警卡片"""
-    high_risk = sum(1 for b in bus for l2 in bus[b]["l2_units"].values()
-                    for d in l2["departments"].values()
-                    if not d["suppressed"] and d["grand_mean"] is not None and d["grand_mean"] < 4.0)
-    high_dis = sum(1 for b in bus for l2 in bus[b]["l2_units"].values()
-                   for d in l2["departments"].values()
-                   if not d["suppressed"] and d["engagement"]["disengaged_pct"] >= 20)
-    declining = sum(1 for b in bus for l2 in bus[b]["l2_units"].values()
-                    for d in l2["departments"].values()
-                    if not d["suppressed"] and (d.get("grand_mean_delta") or 0) < -0.1)
-    disengaged_n = round(company["n"] * company["engagement"]["disengaged_pct"] / 100)
-    # 怠工人数用橙色（非纯红），预警部门用红
-    cards = [
-        ("怠工员工人数", str(disengaged_n), f'占 {company["engagement"]["disengaged_pct"]:.0f}% 受访者', "#f59e0b" if disengaged_n > 0 else "#10b981"),
-        ("预警级部门", str(high_risk), "综合均值 < 4.0", "#ef4444" if high_risk > 0 else "#10b981"),
-        ("高怠工部门", str(high_dis), "怠工占比 ≥ 20%", "#ef4444" if high_dis > 0 else "#10b981"),
-        ("环比下滑", str(declining), "较上期明显下降", "#f59e0b" if declining > 0 else "#10b981"),
-    ]
-    inner = "".join(
-        f'<div class="risk-card" style="border-top-color:{c}"><div class="rc-label">{esc(l)}</div>'
-        f'<div class="rc-value" style="color:{c}">{v}</div><div class="rc-foot">{esc(f)}</div></div>'
-        for l, v, f, c in cards)
-    return f'<div class="risk-grid">{inner}</div>'
-
-
 def vp_hero(bu, meta, all_bus, bu_name):
     """VP看板 Hero：小仪表盘 + 本部定位 + 关键指标"""
     eng = bu["engagement"]
@@ -1191,10 +1193,10 @@ def vp_hero(bu, meta, all_bus, bu_name):
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
     stats = [
-        ("受访人数", str(bu["n"]), "有效问卷", "#2563eb", ""),
+        ("受访人数", str(bu["n"]), _benchmark_note(meta, "total_pct", bu["n"]), "#2563eb", ""),
         ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed", "textual"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981", ""),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981", ""),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b", ""),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
@@ -1202,7 +1204,8 @@ def vp_hero(bu, meta, all_bus, bu_name):
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c, cls in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 240px 1fr;gap:24px">'
             f'<div>{gauge}</div><div>{pos_html}</div>'
-            f'<div class="hero-stats">{stats_html}</div></div>')
+            f'<div class="hero-stats">{stats_html}</div></div>'
+            f'<div class="hero-source">行业基准来源：{INDUSTRY_BENCHMARK_SOURCE}</div>')
 
 
 def manager_hero(dept, meta):
@@ -1218,17 +1221,18 @@ def manager_hero(dept, meta):
              f'<text x="60" y="62" text-anchor="middle" font-size="28" font-weight="800" fill="{color}">{score}</text>'
              f'<text x="60" y="80" text-anchor="middle" font-size="11" fill="#9ca3af">{bnd}</text></svg>')
     stats = [
-        ("团队人数", str(dept["n"]), "参与调研", "#2563eb"),
-        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', "个人均分≥4.0", "#10b981"),
+        ("团队人数", str(dept["n"]), _benchmark_note(meta, "total_pct", dept["n"]), "#2563eb"),
+        ("敬业员工", f'{eng["engaged_pct"]:.0f}%', _benchmark_note(meta, "engaged"), "#10b981"),
         ("从业员工", f'{eng["neutral_pct"]:.0f}%', "个人均分3.0~3.9", "#f59e0b"),
-        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', "个人均分<3.0", "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
+        ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', _benchmark_note(meta, "disengaged"), "#ef4444" if eng["disengaged_pct"]>=20 else "#f59e0b"),
     ]
     stats_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
         f'<div class="hs-value" style="color:{c}">{v}</div>'
         f'<div class="hs-foot">{esc(f)}</div></div>' for l, v, f, c in stats)
     return (f'<div class="hero-banner" style="grid-template-columns:auto 1fr">'
-            f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>')
+            f'<div>{gauge}</div><div class="hero-stats">{stats_html}</div></div>'
+            f'<div class="hero-source">行业基准来源：{INDUSTRY_BENCHMARK_SOURCE}</div>')
 
 
 def manager_team_snapshot(dept, meta):
@@ -1475,7 +1479,7 @@ def render_ceo(data, insights):
     body += sec_head(1, "诊断洞察", "AI 基于数据的总体判断与建议")
     body += insights_html(insights)
 
-    # 卡片网格：四维度得分与系统性诊断并排，组织风险仪表盘全宽
+    # 卡片网格：四维度得分与系统性诊断并排
     body += "<div class='vp-grid'>"
     benchmark = meta.get("benchmark")
     if benchmark:
@@ -1489,8 +1493,6 @@ def render_ceo(data, insights):
                              benchmark_source=benchmark_source) + "</div>")
     body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>系统性 vs 局部问题 "
              "<small>政策级 / 管理辅导 · CEO独有判断</small></div>" + diagnosis_bars(comp, meta) + "</div>")
-    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>组织风险仪表盘 "
-             "<small>关键风险信号速览</small></div>" + risk_dashboard(comp, bus, meta) + "</div>")
     body += "</div>"
 
     # 通栏：一级事业部横向对比
