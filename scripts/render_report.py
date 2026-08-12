@@ -1099,72 +1099,8 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
 
 
 def diagnosis_bars(company, meta):
-    """系统性 vs 局部问题：12 道题得分横向条形图，参考截图样式。
-    按题号排序，按分数段着色（低红/中蓝/高绿），最低 3 道加警示标，附预警线/优秀线。"""
-    qs = [q for q in meta["questions"] if q in company.get("questions", {})]
-    qs.sort(key=lambda q: int(q[1:]) if q[1:].isdigit() else 999)
-    items = [(q, company["questions"][q]) for q in qs
-             if company["questions"][q].get("mean") is not None]
-    if not items:
-        return '<div class="muted">无可用数据</div>'
-
-    # 最低 3 道
-    bottom3 = {q for q, _ in sorted(items, key=lambda x: x[1]["mean"])[:3]}
-
-    W, H = 680, 520
-    left, right, top, bottom = 130, 70, 34, 40
-    cw = W - left - right
-    ch = H - top - bottom
-    row_h = 36
-    bar_h = 24
-    axis_min = 1.0
-
-    def x_pos(v):
-        return left + max(0, min(cw, (v - axis_min) / (SCALE_MAX - axis_min) * cw))
-
-    # 背景网格线 / X 轴刻度（1-5）
-    grid = ""
-    for v in range(1, 6):
-        x = x_pos(v)
-        grid += f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+ch}" stroke="#f3f4f6" stroke-width="1"/>'
-        grid += f'<text x="{x:.1f}" y="{top+ch+18}" text-anchor="middle" font-size="11" fill="#9ca3af">{v}</text>'
-
-    # 参考线：预警线 4.0 / 优秀线 4.5
-    refs = ""
-    for v, label, color in [(4.0, "预警线", "#f59e0b"), (4.5, "优秀线", "#10b981")]:
-        x = x_pos(v)
-        refs += f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+ch}" stroke="{color}" stroke-width="1.5" stroke-dasharray="5 4"/>'
-        refs += f'<text x="{x:.1f}" y="{top-8}" text-anchor="middle" font-size="11" fill="{color}" font-weight="600">{label} {v}</text>'
-
-    bars = ""
-    for i, (q, d) in enumerate(items):
-        mean = d["mean"]
-        band = d.get("band")
-        if band == "预警":
-            col = "#ef4444"
-        elif band in ("关注", "良好"):
-            col = "#3b82f6"
-        else:  # 优势
-            col = "#10b981"
-        x_start = x_pos(axis_min)
-        x_end = x_pos(mean)
-        width = max(0, x_end - x_start)
-        y = top + i * row_h
-        short = meta["question_short"].get(q, "")
-        warn = f'<text x="{x_end+38:.1f}" y="{y+20:.1f}" font-size="15" fill="#f59e0b">▲</text>' if q in bottom3 else ""
-        score_x = x_end + 10 if width > 40 else x_end + 36  # 条太短则数值右移
-        bars += (
-            f'<text x="{left-10:.1f}" y="{y+15:.1f}" text-anchor="end" font-size="14" font-weight="700" fill="#374151">{q}</text>'
-            f'<text x="{left-10:.1f}" y="{y+32:.1f}" text-anchor="end" font-size="12" fill="#6b7280">{esc(short)}</text>'
-            f'<rect x="{x_start:.1f}" y="{y+6:.1f}" width="{width:.1f}" height="{bar_h}" rx="5" fill="{col}"/>'
-            f'<text x="{score_x:.1f}" y="{y+22:.1f}" font-size="13" font-weight="700" fill="{col}">{mean:.2f}</text>'
-            f'{warn}'
-        )
-
-    svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
-           f'{grid}{refs}{bars}</svg>')
-    return (f'{svg}'
-            f'<div class="legend">按 5 分制绘制 · 最低 3 道题已标 ▲ · 黄色虚线=预警线(4.0) · 绿色虚线=优秀线(4.5)</div>')
+    """占位：原 12 题条形图已下线（仅 CEO 面板使用，CEO 已移除此卡片）。"""
+    return ""
 
 
 def vp_hero(bu, meta, all_bus, bu_name):
@@ -1485,12 +1421,10 @@ def render_ceo(data, insights):
     else:
         benchmark = DEFAULT_BENCHMARK
         benchmark_source = "缺省参考值（非真实行业调研 · 可在 meta[\"benchmark\"] 覆盖）"
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
+    body += ("<div class='vp-cell vp-span'><div class='ct'><span class='dot'></span>四维度得分 "
              "<small>公司均值 vs 行业常模（5 分制）</small></div>" +
              dimension_radar(comp, meta, benchmark=benchmark, benchmark_label="行业常模",
                              benchmark_source=benchmark_source) + "</div>")
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>系统性 vs 局部问题 "
-             "<small>政策级 / 管理辅导 · CEO独有判断</small></div>" + diagnosis_bars(comp, meta) + "</div>")
     body += "</div>"
 
     # 通栏：一级事业部横向对比
