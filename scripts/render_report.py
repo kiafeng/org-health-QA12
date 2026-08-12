@@ -270,7 +270,7 @@ tr:hover td{background:#f9fafb}
 .block-card .bdesc{font-size:12px;color:var(--sub);margin-bottom:10px}
 .block-card table{border:none;box-shadow:none}
 .block-card td{border:none;border-bottom:1px solid #f3f4f6}
-.timeline{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.timeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
 .tl-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
 .tl-card .tl-h{font-size:13px;font-weight:700;margin-bottom:8px}
 .tl-card ul{margin-left:16px}
