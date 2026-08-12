@@ -930,45 +930,43 @@ def classify_quadrant(mean, std, mean_med, std_med):
 
 
 def manager_quadrant_html(data, bu_name, meta, part="all"):
-    """经理人效能象限：本事业部下属三级部门负责人。
+    """二级部门负责人效能象限：本事业部下属二级部门。
     横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆圈大小=团队人数；颜色=象限。
-    阈值（中位数）默认取本事业部下属三级部门，部门数<3 时回退公司整体中位数。
+    阈值（中位数）默认取本事业部下属二级部门，二级部门数<3 时回退全公司二级部门中位数。
     """
     bu = data["business_units"][bu_name]
 
-    # 收集本事业部下所有三级部门
+    # 收集本事业部下所有二级部门
     items = []
     for l2n, l2 in bu["l2_units"].items():
-        for dn, d in l2["departments"].items():
-            if d.get("suppressed") or d.get("grand_mean") is None:
-                continue
-            items.append({
-                "l2": l2n, "dept": dn, "n": d["n"],
-                "mean": d["grand_mean"],
-                "std": d.get("score_std") or 0,
-                "band": d.get("grand_band"),
-            })
+        if l2.get("suppressed") or l2.get("grand_mean") is None:
+            continue
+        items.append({
+            "l2": l2n, "n": l2["n"],
+            "mean": l2["grand_mean"],
+            "std": l2.get("score_std") or 0,
+            "band": l2.get("grand_band"),
+        })
     if not items:
-        return '<div class="muted">本事业部暂无可展示的三级部门数据</div>'
+        return '<div class="muted">本事业部暂无可展示的二级部门数据</div>'
 
-    # 中位数阈值：优先本事业部，不足 3 个部门回退公司整体
+    # 中位数阈值：优先本事业部，不足 3 个二级部门回退全公司二级部门
     means = [it["mean"] for it in items]
     stds = [it["std"] for it in items]
     if len(items) >= 3:
         mean_med = statistics.median(means)
         std_med = statistics.median(stds)
-        med_src = "本事业部下属三级部门"
+        med_src = "本事业部下属二级部门"
     else:
         all_means, all_stds = [], []
         for bn, b in data["business_units"].items():
             for l2n, l2 in b["l2_units"].items():
-                for dn, d in l2["departments"].items():
-                    if d.get("grand_mean") is not None:
-                        all_means.append(d["grand_mean"])
-                        all_stds.append(d.get("score_std") or 0)
+                if l2.get("grand_mean") is not None:
+                    all_means.append(l2["grand_mean"])
+                    all_stds.append(l2.get("score_std") or 0)
         mean_med = statistics.median(all_means) if all_means else 0
         std_med = statistics.median(all_stds) if all_stds else 0
-        med_src = "公司整体"
+        med_src = "全公司二级部门"
 
     for it in items:
         it["quad"] = classify_quadrant(it["mean"], it["std"], mean_med, std_med)
@@ -1044,7 +1042,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
         dots += (
             f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rad:.1f}" fill="{cfg["color"]}" fill-opacity=".78" stroke="#fff" stroke-width="2"/>'
             f'<text x="{cx:.1f}" y="{cy+4:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">{it["n"]}</text>'
-            f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151">{esc(it["dept"])}</text>'
+            f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151">{esc(it["l2"])}</text>'
             f'<text x="{cx:.1f}" y="{cy+rad+14:.1f}" text-anchor="middle" font-size="10" fill="#6b7280">{it["mean"]:.2f}分 · σ{it["std"]:.2f}</text>'
         )
     svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
@@ -1057,7 +1055,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
         cfg = QUADRANT_CFG[name]
         members = [it for it in items if it["quad"] == name]
         if members:
-            member_lines = " · ".join(f"{it['dept']}（{it['n']}人）" for it in members[:3])
+            member_lines = " · ".join(f"{it['l2']}（{it['n']}人）" for it in members[:3])
             if len(members) > 3:
                 member_lines += f" 等{len(members)}个"
         else:
@@ -1083,7 +1081,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
                 break
         rows.append(
             f'<tr>'
-            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600">{esc(it["dept"])}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600">{esc(it["l2"])}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["n"]}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["mean"]:.2f}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["std"]:.2f}</td>'
@@ -1092,10 +1090,10 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
             f'</tr>'
         )
     table_html = (
-        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">三级部门象限解读</h4>'
+        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">二级部门象限解读</h4>'
         f'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
         f'<thead><tr style="background:#f3f4f6">'
-        f'<th style="padding:10px 12px;text-align:left;font-weight:700">三级部门</th>'
+        f'<th style="padding:10px 12px;text-align:left;font-weight:700">二级部门</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">人数</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">团队均分</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">标准差</th>'
@@ -1106,7 +1104,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all"):
 
     chart = (
         f'{svg}'
-        f'<div class="legend">仅展示本事业部下属三级部门 · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
+        f'<div class="legend">仅展示本事业部下属二级部门 · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
         f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
     )
     if part == "chart":
@@ -1574,6 +1572,114 @@ def vp_action_summary(bu, data, meta):
     return "<ul class='vp-actions'>" + "".join(f"<li>{esc(p)}</li>" for p in pts) + "</ul>"
 
 
+def vp_dimension_diagnosis(bu, comp, meta):
+    """Gallup Q12 层次诊断（本事业部）：L4→L1 四维度得分，对比公司均值，含状态标签、层间差与诊断洞察。保持 5 分制。"""
+    layers = [
+        ("L4", "成长发展"),
+        ("L3", "团队归属"),
+        ("L2", "管理支持"),
+        ("L1", "基本需求"),
+    ]
+    dim_order = [d for _, d in layers]
+    sup = bu.get("suppressed", False)
+
+    rows = []
+    scores = {}
+    comp_scores = {}
+    status_list = []
+    for level, dim in layers:
+        dv = bu["dimensions"].get(dim, {})
+        cv = comp["dimensions"].get(dim, {})
+        score = None if sup else dv.get("mean")
+        cscore = cv.get("mean")
+        scores[dim] = score
+        comp_scores[dim] = cscore
+        if score is None:
+            rows.append(
+                f'<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#f9fafb;border-radius:10px;margin-bottom:10px">'
+                f'<span style="width:36px;height:36px;border-radius:8px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#6b7280">{level}</span>'
+                f'<div style="flex:1"><div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div><div class="muted">数据不可用</div></div></div>')
+            continue
+        delta = (score - cscore) if cscore is not None else None
+        if score >= 4.0 and (delta is None or delta >= -0.05):
+            status, sc, bg = "健康", "#10b981", "#dcfce7"
+        elif score >= 3.8:
+            status, sc, bg = "关注", "#f59e0b", "#fef3c7"
+        else:
+            status, sc, bg = "关注", "#f59e0b", "#fef3c7"
+        # 瓶颈：四个维度中最低且低于 4.0
+        is_bottleneck = score < 4.0 and all(score <= (scores.get(d) or 5) for d in dim_order if scores.get(d) is not None)
+        tag_html = (f'<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:{bg};color:{sc}">{status}</span>'
+                    + (f'<span style="display:inline-block;margin-left:6px;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:#fee2e2;color:#ef4444">▲ 瓶颈</span>' if is_bottleneck else ''))
+        delta_html = ""
+        if delta is not None:
+            dc = "#10b981" if delta > 0 else ("#ef4444" if delta < -0.05 else "#6b7280")
+            da = "↑" if delta > 0 else ("↓" if delta < -0.05 else "—")
+            delta_html = f'<span style="color:{dc};font-size:13px;font-weight:700;margin-left:8px">{da} {abs(delta):.2f}</span>'
+        comp_html = f'<span style="font-size:13px;color:#6b7280;margin-left:10px">公司均值 {cscore:.2f}</span>' if cscore is not None else ''
+        rows.append(
+            f'<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px">'
+            f'<span style="width:36px;height:36px;border-radius:8px;background:{DIM_COLOR.get(dim,"#e5e7eb")};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151">{level}</span>'
+            f'<div style="flex:1"><div style="font-size:15px;font-weight:700;color:#374151">{esc(dim)}</div></div>'
+            f'<div style="display:flex;align-items:center;gap:6px"><span style="font-size:26px;font-weight:800;color:#1f2937">{score:.2f}</span>{comp_html}{delta_html}</div>'
+            f'<div>{tag_html}</div></div>')
+        status_list.append((dim, score, status, is_bottleneck))
+
+    # 层间差
+    gaps = []
+    gap_desc = []
+    for i in range(len(layers) - 1):
+        upper_l, upper_d = layers[i]
+        lower_l, lower_d = layers[i + 1]
+        us, ls = scores.get(upper_d), scores.get(lower_d)
+        if us is not None and ls is not None:
+            diff = ls - us
+            color = "#ef4444" if diff > 0.5 else ("#f59e0b" if diff > 0.2 else "#6b7280")
+            arrow = "↑" if diff > 0 else ("↓" if diff < 0 else "—")
+            gaps.append((upper_l, lower_l, diff, lower_d, upper_d))
+            gap_desc.append(
+                f'<span style="display:inline-block;margin-right:16px;font-size:13px;color:#374151">'
+                f'<b>{upper_l}→{lower_l}</b>：<span style="color:{color};font-weight:700">{arrow} {abs(diff):.2f} 分</span></span>')
+    gap_html = f'<div style="margin-top:8px">{ "".join(gap_desc) }</div>' if gap_desc else ""
+
+    # 诊断洞察
+    insights = []
+    if status_list:
+        # 最大瓶颈
+        weak = [x for x in status_list if x[3]]
+        if weak:
+            names = "、".join(esc(x[0]) for x in weak)
+            insights.append(f"<b>最大瓶颈</b>：{names} 处于瓶颈状态，得分低于 4.0，存在「需求断裂」风险，建议优先干预。")
+        # 最大层间差
+        if gaps:
+            gaps_sorted = sorted(gaps, key=lambda x: -abs(x[2]))
+            _, _, maxdiff, lower_d, upper_d = gaps_sorted[0]
+            if maxdiff > 0:
+                insights.append(f"<b>最大层间差</b>：{esc(upper_d)}→{esc(lower_d)} 差 {maxdiff:.2f} 分，低层次需求满足度高于高层次，员工在「{esc(upper_d)}」上的体验未跟上。")
+            elif maxdiff < 0:
+                insights.append(f"<b>最大层间差</b>：{esc(upper_d)}→{esc(lower_d)} 差 {abs(maxdiff):.2f} 分，呈现正常金字塔结构。")
+        # 关键发现
+        lowest = min(status_list, key=lambda x: x[1])
+        insights.append(f"<b>关键发现</b>：{esc(lowest[0])}（{get_layer_label(lowest[0])}）得分最低（{lowest[1]:.2f}），是本事业部优先改善领域。")
+        # 行动建议
+        insights.append(f"<b>行动建议</b>：聚焦 <b>{esc(lowest[0])}</b> 维度，优先通过 manager 1:1、反馈与认可机制、资源支持等方式补强短板。")
+
+    insight_html = (f'<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px">'
+                    f'<div style="font-size:14px;font-weight:700;color:#1e40af;margin-bottom:10px">诊断洞察</div>'
+                    f'{"".join(f"<div style=\"font-size:13px;color:#374151;line-height:1.7;margin-bottom:6px\">{x}</div>" for x in insights)}</div>')
+
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>Gallup Q12 层次诊断 "
+            f"<small>本事业部 · L4→L1 · 对比公司均值（5 分制）</small></div>"
+            f'<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start">'
+            f'<div>{"".join(rows)}{gap_html}</div>'
+            f'<div>{insight_html}</div></div></div>')
+
+
+def get_layer_label(dim):
+    """根据维度名返回 Gallup 层级标签。"""
+    return {"基本需求": "L1", "管理支持": "L2", "团队归属": "L3", "成长发展": "L4"}.get(dim, "")
+
+
 def render_vp(data, bu_name, insights):
     meta, comp = data["meta"], data["company"]
     bu = data["business_units"][bu_name]
@@ -1583,11 +1689,13 @@ def render_vp(data, bu_name, insights):
     body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
     body += vp_hero(bu, meta, data["business_units"], bu_name, comp)
-    # 并排：四维度得分 + 二级部门维度数据对比
+    # Gallup Q12 层次诊断（通栏：含 L4-L1、公司对比、诊断洞察）
+    body += vp_dimension_diagnosis(bu, comp, meta)
+    # 并排：二级部门负责人效能象限 + 二级部门维度数据对比
     body += "<div class='vp-grid'>"
-    body += ("<div class='vp-cell'><div class='ct'><span class='dot'></span>四维度得分 "
-             "<small>本事业部 vs 公司（5 分制）</small></div>" +
-             dimension_radar(bu, meta, compare_unit=comp, compare_label="公司均值") + "</div>")
+    body += (f"<div class='vp-cell'><div class='ct'><span class='dot'></span>二级部门负责人效能象限 "
+             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
     tree = [(f"{l2n}", l2, l2.get("percentile_vs_l2"), 0, None)
             for l2n, l2 in sorted(bu["l2_units"].items(),
                                   key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))]
@@ -1596,9 +1704,6 @@ def render_vp(data, bu_name, insights):
              f"<div style='overflow-x:auto'>{heat_table(tree, meta, '二级部门')}</div></div>")
     body += "</div>"
     # 以下模块不再并排，单列通栏
-    body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>经理人效能象限 "
-             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
-             f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
     body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>员工类型分布 "
              f"<small>消极/中立/激发/高效 · 按消极占比降序</small></div>"
              f"{employee_type_distribution(data, bu_name, meta)}</div>")
