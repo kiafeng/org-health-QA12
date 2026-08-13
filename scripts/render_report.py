@@ -1080,7 +1080,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     # 中位数标注
     med_notes = (
         f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">均分中位数 {mean_med:.2f}</text>'
-        f'<text x="{pad_l-8}" y="{y_med-6:.1f}" text-anchor="end" font-size="10" fill="#6b7280">离散中位数 {std_med:.3f}</text>'
+        f'<text x="{pad_l+6:.1f}" y="{y_med-8:.1f}" text-anchor="start" font-size="10" fill="#6b7280">离散中位数 {std_med:.3f}</text>'
     )
     # 气泡（标签经力导向防重叠，必要时用引线连接）
     max_n = max(it["n"] for it in items)
