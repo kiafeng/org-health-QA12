@@ -271,6 +271,9 @@ tr:hover td{background:#f9fafb}
 .block-card table{border:none;box-shadow:none}
 .block-card td{border:none;border-bottom:1px solid #f3f4f6}
 .timeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.masonry-2{column-count:2;column-gap:16px}
+.masonry-item{break-inside:avoid;page-break-inside:avoid;margin-bottom:14px}
+.masonry-item .ct{margin-bottom:8px}
 .tl-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow)}
 .tl-card .tl-h{font-size:13px;font-weight:700;margin-bottom:8px}
 .tl-card ul{margin-left:16px}
@@ -1419,20 +1422,22 @@ def cross_dept_common(bu, meta, l2_name=None):
 
 # ---------- 经理人看板专属组件 ----------
 
-def rootcause_conversation(dept, meta, ins):
-    """根因假设 + 1:1对话指南：针对本团队薄弱题项"""
+def rootcause_conversation(dept, meta, ins, masonry=False):
+    """根因假设 + 1:1对话指南：针对本团队薄弱题项。
+    masonry=True 时每个卡片独立参与 CSS columns 流动，不包 blocks 容器。"""
     bots = [q for q in dept["bottom_questions"] if q in meta["questions"]]
     if not bots:
         return ""
     ins_rc = (ins or {}).get("root_causes", {})
     ins_cv = (ins or {}).get("conversation", {})
     parts = []
+    extra_cls = " masonry-item" if masonry else ""
     for q in bots:
         rc = ins_rc.get(q) or ROOT_CAUSES.get(q, [])
         cv = ins_cv.get(q) or CONVERSATION_GUIDE.get(q, "")
         rc_li = "".join(f"<li>{esc(r)}</li>" for r in rc)
         parts.append(
-            f'<div class="block-card" style="border-left-color:#cf222e">'
+            f'<div class="block-card{extra_cls}" style="border-left-color:#cf222e">'
             f'<h4 style="color:#cf222e">{q} {esc(meta["question_short"][q])} '
             f'<span style="font-weight:400;font-size:12px">均值 {fmt(dept["questions"][q]["mean"])}'
             f' · {polarization_flag(dept["questions"][q].get("dist"), dept["n"])}</span></h4>'
@@ -1440,11 +1445,14 @@ def rootcause_conversation(dept, meta, ins):
             f'<ul style="margin-left:18px">{rc_li}</ul></div>'
             f'<div style="background:#f6f8fa;border-radius:8px;padding:10px 14px;margin-top:8px">'
             f'<b>1:1 对话指南</b>：{esc(cv)}</div></div>')
+    if masonry:
+        return "".join(parts)
     return '<div class="blocks">' + "".join(parts) + '</div>'
 
 
-def action_timeline(ins, dept, meta):
-    """30天建议：有AI撰写则用，否则按薄弱题项自动生成"""
+def action_timeline(ins, dept, meta, masonry=False):
+    """30天建议：有AI撰写则用，否则按薄弱题项自动生成。
+    masonry=True 时卡片独立参与 CSS columns 流动，不包 timeline 容器。"""
     a30 = (ins or {}).get("actions_30")
     bots = [q for q in dept["bottom_questions"] if q in meta["questions"]]
     if not a30 and bots:
@@ -1452,9 +1460,12 @@ def action_timeline(ins, dept, meta):
     if not a30:
         a30 = ["针对薄弱项制定具体改善动作"]
     li = "".join(f"<li>{esc(x)}</li>" for x in a30)
-    return ('<div class="timeline">' +
-            f'<div class="tl-card" style="border-top:3px solid #cf222e">'
-            f'<div class="tl-h" style="color:#cf222e">30 天建议</div><ul>{li}</ul></div></div>')
+    extra_cls = " masonry-item" if masonry else ""
+    card = (f'<div class="tl-card{extra_cls}" style="border-top:3px solid #cf222e">'
+            f'<div class="tl-h" style="color:#cf222e">30 天建议</div><ul>{li}</ul></div>')
+    if masonry:
+        return card
+    return f'<div class="timeline">{card}</div>'
 
 
 def employee_type_distribution(data, bu_name, meta, l2_name=None):
@@ -1892,13 +1903,18 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
              "<small>本团队四类员工分布</small></div>" + manager_team_snapshot(dept, meta) + "</div>")
     # 团队员工群体洞察（与 VP 同款：均分条形图 + 关键洞察，5 分制）
     body += manager_group_insights(dept, meta)
-    # 最后：优先改善项 + 30天建议 并排展示
-    body += ("<div style='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;align-items:start'>"
-             "<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>优先改善项 "
-             "<small>根因假设与 1:1 指南</small></div>" + rootcause_conversation(dept, meta, insights) + "</div>"
-             "<div class='vp-cell' style='min-width:0'><div class='ct'><span class='dot'></span>30天建议 "
-             "<small>按薄弱项排优先级</small></div>" + action_timeline(insights, dept, meta) + "</div>"
-             "</div>")
+    # 最后：优先改善项 + 30天建议 用 masonry 自动平衡，避免单侧留白
+    rc_html = rootcause_conversation(dept, meta, insights, masonry=True)
+    tl_html = action_timeline(insights, dept, meta, masonry=True)
+    if rc_html or tl_html:
+        parts = []
+        if rc_html:
+            parts.append("<div class='masonry-item'><div class='ct'><span class='dot'></span>优先改善项 "
+                         "<small>根因假设与 1:1 指南</small></div></div>" + rc_html)
+        if tl_html:
+            parts.append("<div class='masonry-item'><div class='ct'><span class='dot'></span>30天建议 "
+                         "<small>按薄弱项排优先级</small></div></div>" + tl_html)
+        body += "<div class='vp-wide'><div class='masonry-2'>" + "".join(parts) + "</div></div>"
     body += footnote(meta, "经理人（3级）看板仅供部门负责人本人使用，含主管效能诊断信息，请勿在团队内公开传阅。")
     return page(f"经理人（3级）-{dept_name}{('-' + period) if period else ''}", body)
 
