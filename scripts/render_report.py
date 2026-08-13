@@ -1619,7 +1619,7 @@ def vp_action_summary(bu, data, meta, unit_label="本事业部", sub_word="部�
 
 
 def vp_dimension_diagnosis(bu, comp, meta, unit_label="本事业部"):
-    """Gallup Q12 层次诊断：L4→L1 四维度得分，对比公司均值，含状态标签、层间差与诊断洞察。保持 5 分制。
+    """Q12 层次诊断：L4→L1 四维度得分，对比公司均值，含状态标签、层间差与诊断洞察。保持 5 分制。
     unit_label 控制标题中的层级词（默认『本事业部』，二级部门面板用『本二级部门』）。"""
     layers = [
         ("L4", "成长发展"),
@@ -1717,7 +1717,7 @@ def vp_dimension_diagnosis(bu, comp, meta, unit_label="本事业部"):
                     f'<div style="font-size:14px;font-weight:700;color:#1e40af;margin-bottom:10px">诊断洞察</div>'
                     f'{"".join(f"<div style=\"font-size:13px;color:#374151;line-height:1.7;margin-bottom:6px\">{x}</div>" for x in insights)}</div>')
 
-    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>Gallup Q12 层次诊断 "
+    return (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>Q12 层次诊断 "
             f"<small>{esc(unit_label)} · L4→L1 · 对比公司均值（5 分制）</small></div>"
             f'<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start">'
             f'<div>{"".join(rows)}{gap_html}</div>'
@@ -1725,7 +1725,7 @@ def vp_dimension_diagnosis(bu, comp, meta, unit_label="本事业部"):
 
 
 def get_layer_label(dim):
-    """根据维度名返回 Gallup 层级标签。"""
+    """根据维度名返回 Q12 层级标签。"""
     return {"基本需求": "L1", "管理支持": "L2", "团队归属": "L3", "成长发展": "L4"}.get(dim, "")
 
 
@@ -1738,7 +1738,7 @@ def render_vp(data, bu_name, insights):
     body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
     body += vp_hero(bu, meta, data["business_units"], bu_name, comp)
-    # Gallup Q12 层次诊断（通栏：含 L4-L1、公司对比、诊断洞察）
+    # Q12 层次诊断（通栏：含 L4-L1、公司对比、诊断洞察）
     body += vp_dimension_diagnosis(bu, comp, meta)
     # 单列展示：二级部门负责人效能象限（通栏）
     body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>二级部门负责人效能象限 "
@@ -1825,7 +1825,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
     body = header_html(f"经理人（2级） · {l2_name}", "二级部门负责人视角 · 经营与人才培养",
                        [period, f"受访 {l2['n']} 人", f"{n_dept} 个三级部门"])
     body += hero
-    # Gallup Q12 层次诊断（通栏）
+    # Q12 层次诊断（通栏）
     body += vp_dimension_diagnosis(l2, comp, meta, unit_label="本二级部门")
     # 单列展示：三级部门负责人效能象限（通栏）
     body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>三级部门负责人效能象限 "
