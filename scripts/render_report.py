@@ -1065,7 +1065,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<text x="{x_pos(t):.1f}" y="{pad_t+ph+18}" text-anchor="middle" font-size="11" fill="#6b7280">{t:.2f}</text>'
         for t in x_ticks
     )
-    y_ticks = [0, std_med, y_max]
+    y_ticks = [0, y_max]
     def _yfmt(t):
         return "0" if t == 0 else f"{t:.3f}"
     y_axis = "".join(
