@@ -1039,18 +1039,18 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     x_med = x_pos(mean_med)
     y_med = y_pos(std_med)
 
-    # 象限背景（高均分在右、高离散在上 => 右上明星 / 右下高压 / 左上老好人 / 左下危险）
+    # 象限背景（高均分在右、高离散在上 => 右上明星 / 右下高压 / 左上危险 / 左下老好人）
     quads_bg = (
-        f'<rect x="{pad_l}" y="{pad_t}" width="{x_med-pad_l:.1f}" height="{y_med-pad_t:.1f}" fill="#fef3c7" opacity=".55"/>'
+        f'<rect x="{pad_l}" y="{pad_t}" width="{x_med-pad_l:.1f}" height="{y_med-pad_t:.1f}" fill="#fee2e2" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{pad_t}" width="{pad_l+pw-x_med:.1f}" height="{y_med-pad_t:.1f}" fill="#dcfce7" opacity=".55"/>'
-        f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fee2e2" opacity=".55"/>'
+        f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fef3c7" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{y_med:.1f}" width="{pad_l+pw-x_med:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#dbeafe" opacity=".55"/>'
     )
     # 象限标签
     qlabels = (
-        f'<text x="{pad_l+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#d97706">⚠️ 老好人经理</text>'
+        f'<text x="{pad_l+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#dc2626">🚨 危险经理</text>'
         f'<text x="{x_med+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#1a7f37">🌟 明星经理</text>'
-        f'<text x="{pad_l+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#dc2626">🚨 危险经理</text>'
+        f'<text x="{pad_l+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#d97706">⚠️ 老好人经理</text>'
         f'<text x="{x_med+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#2563eb">🔥 高压经理</text>'
     )
     # 参考线（中位数）
