@@ -1270,7 +1270,7 @@ def vp_hero(bu, meta, all_bus, bu_name, comp):
     if pctl is not None:
         if pctl >= 67: pos, pc = ("引领者", "#10b981")
         elif pctl >= 33: pos, pc = ("中位水平", "#f59e0b")
-        else: pos, pc = ("落后者", "#ef4444")
+        else: pos, pc = ("待提升", "#ef4444")
         pos_html = f'<div style="font-size:22px;font-weight:800;color:{pc}">{pos}</div><div style="font-size:11px;color:var(--sub)">公司内排名 {rank}/{total} · 超过 {pctl}% 事业部</div>'
     else:
         pos_html = '<div class="muted">排名数据不可用</div>'
@@ -1319,7 +1319,7 @@ def manager_hero(dept, meta, bu, l2, comp, bu_name, l2_name):
         elif pctl >= 33:
             pos, pc = ("中位水平", "#f59e0b")
         else:
-            pos, pc = ("落后者", "#ef4444")
+            pos, pc = ("待提升", "#ef4444")
         rank_txt = (f"BU 内排名 {rank}/{n_depts} · 超过 {pctl}% 部门"
                     if rank else f"超过 {pctl}% 部门")
         pos_html = (f'<div style="font-size:22px;font-weight:800;color:{pc}">{pos}</div>'
@@ -1840,7 +1840,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
     if pctl is not None:
         if pctl >= 67: pos, pc = ("引领者", "#10b981")
         elif pctl >= 33: pos, pc = ("中位水平", "#f59e0b")
-        else: pos, pc = ("落后者", "#ef4444")
+        else: pos, pc = ("待提升", "#ef4444")
         pos_html = f'<div style="font-size:22px;font-weight:800;color:{pc}">{pos}</div><div style="font-size:11px;color:var(--sub)">事业部内排名 {rank}/{total} · 超过 {pctl}% 二级部门</div>'
     else:
         pos_html = '<div class="muted">排名数据不可用</div>'
