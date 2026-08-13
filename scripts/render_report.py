@@ -1034,23 +1034,23 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         return pad_l + (v - x_min) / (x_max - x_min) * pw
 
     def y_pos(v):
-        return pad_t + ph - (v / y_max) * ph
+        return pad_t + (v / y_max) * ph
 
     x_med = x_pos(mean_med)
     y_med = y_pos(std_med)
 
-    # 象限背景（高均分在右、高离散在上 => 右上明星 / 右下高压 / 左上危险 / 左下老好人）
+    # 象限背景（文档标准：高均分在右、低离散在上 => 左上老好人 / 右上明星 / 左下危险 / 右下高压）
     quads_bg = (
-        f'<rect x="{pad_l}" y="{pad_t}" width="{x_med-pad_l:.1f}" height="{y_med-pad_t:.1f}" fill="#fee2e2" opacity=".55"/>'
+        f'<rect x="{pad_l}" y="{pad_t}" width="{x_med-pad_l:.1f}" height="{y_med-pad_t:.1f}" fill="#fef3c7" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{pad_t}" width="{pad_l+pw-x_med:.1f}" height="{y_med-pad_t:.1f}" fill="#dcfce7" opacity=".55"/>'
-        f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fef3c7" opacity=".55"/>'
+        f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fee2e2" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{y_med:.1f}" width="{pad_l+pw-x_med:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#dbeafe" opacity=".55"/>'
     )
     # 象限标签
     qlabels = (
-        f'<text x="{pad_l+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#dc2626">🚨 危险经理</text>'
+        f'<text x="{pad_l+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#d97706">⚠️ 老好人经理</text>'
         f'<text x="{x_med+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#1a7f37">🌟 明星经理</text>'
-        f'<text x="{pad_l+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#d97706">⚠️ 老好人经理</text>'
+        f'<text x="{pad_l+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#dc2626">🚨 危险经理</text>'
         f'<text x="{x_med+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#2563eb">🔥 高压经理</text>'
     )
     # 参考线（中位数）
@@ -1073,7 +1073,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     )
     axis_titles = (
         f'<text x="{pad_l+pw/2:.1f}" y="{H-10}" text-anchor="middle" font-size="12" fill="#6b7280">团队均分（横轴 → 越右越好）</text>'
-        f'<text x="18" y="{pad_t+ph/2:.1f}" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90 18 {pad_t+ph/2:.1f})">↑ 人员间标准差（离散度）</text>'
+        f'<text x="18" y="{pad_t+ph/2:.1f}" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90 18 {pad_t+ph/2:.1f})">↓ 人员间标准差（离散度）</text>'
     )
     # 中位数标注
     med_notes = (
@@ -1174,11 +1174,12 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     )
 
     chart = (
-        f'<div class="quad-hint">本象限按<b>团队均分</b>（横轴，越右越好）与<b>人员间标准差 σ</b>（纵轴，越上越分化）'
+        f'<div class="quad-hint">本象限按<b>团队均分</b>（横轴，越右越好）与<b>人员间标准差 σ</b>（纵轴，越上越一致 / 越下越分化）'
         f'为每位负责人定位，分界是<b>均分中位数 {mean_med:.2f}</b> 与 <b>离散中位数 {std_med:.2f}</b>'
-        f'（取自{med_src}；下属部门&lt;3 个时取全公司）。例如 <b>老好人经理</b>＝均分≤中位数 且 σ≤中位数：'
-        f'团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整；'
-        f'反之 <b>明星经理</b>＝均分&gt;中位数 且 σ≤中位数，是标杆。</div>'
+        f'（取自{med_src}；下属部门&lt;3 个时取全公司）。四象限对应：'
+        f'<b>明星经理</b>＝高分+低离散，<b>老好人经理</b>＝低分+低离散，'
+        f'<b>高压经理</b>＝高分+高离散，<b>危险经理</b>＝低分+高离散。'
+        f'例如老好人经理团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整。</div>'
         f'{svg}'
         f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
         f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
