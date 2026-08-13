@@ -1066,9 +1066,11 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         for t in x_ticks
     )
     y_ticks = [0, std_med, y_max]
+    def _yfmt(t):
+        return "0" if t == 0 else f"{t:.3f}"
     y_axis = "".join(
         f'<line x1="{pad_l-4}" y1="{y_pos(t):.1f}" x2="{pad_l}" y2="{y_pos(t):.1f}" stroke="#9ca3af"/>'
-        f'<text x="{pad_l-8}" y="{y_pos(t)+4:.1f}" text-anchor="end" font-size="11" fill="#6b7280">{t:.2f}</text>'
+        f'<text x="{pad_l-8}" y="{y_pos(t)+4:.1f}" text-anchor="end" font-size="11" fill="#6b7280">{_yfmt(t)}</text>'
         for t in y_ticks
     )
     axis_titles = (
@@ -1078,7 +1080,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     # 中位数标注
     med_notes = (
         f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">均分中位数 {mean_med:.2f}</text>'
-        f'<text x="{pad_l-8}" y="{y_med-6:.1f}" text-anchor="end" font-size="10" fill="#6b7280">离散中位数 {std_med:.2f}</text>'
+        f'<text x="{pad_l-8}" y="{y_med-6:.1f}" text-anchor="end" font-size="10" fill="#6b7280">离散中位数 {std_med:.3f}</text>'
     )
     # 气泡（标签经力导向防重叠，必要时用引线连接）
     max_n = max(it["n"] for it in items)
@@ -1090,7 +1092,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         nw = max(48, len(it["l2"]) * 12 + 10)
         name_anchors.append({"cx": cx, "oy": cy - rad - 8, "w": nw, "h": 16, "text": it["l2"]})
         score_anchors.append({"cx": cx, "oy": cy + rad + 16, "w": 104, "h": 14,
-                              "text": f'{it["mean"]:.2f}分 · σ{it["std"]:.2f}'})
+                              "text": f'{it["mean"]:.2f}分 · σ{it["std"]:.3f}'})
     name_pos = relax_labels(name_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
     score_pos = relax_labels(score_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
     dots = ""
@@ -1155,7 +1157,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600">{esc(it["l2"])}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["n"]}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["mean"]:.2f}</td>'
-            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["std"]:.2f}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["std"]:.3f}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center"><span style="color:{cfg["color"]};font-weight:700">{cfg["icon"]} {it["quad"]}</span></td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);color:#4b5563;font-size:13px">{esc(band_txt)} · {esc(cfg["subtext"])}</td>'
             f'</tr>'
@@ -1175,14 +1177,14 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
 
     chart = (
         f'<div class="quad-hint">本象限按<b>团队均分</b>（横轴，越右越好）与<b>人员间标准差 σ</b>（纵轴，越上越一致 / 越下越分化）'
-        f'为每位负责人定位，分界是<b>均分中位数 {mean_med:.2f}</b> 与 <b>离散中位数 {std_med:.2f}</b>'
+        f'为每位负责人定位，分界是<b>均分中位数 {mean_med:.2f}</b> 与 <b>离散中位数 {std_med:.3f}</b>'
         f'（取自{med_src}；下属部门&lt;3 个时取全公司）。四象限对应：'
         f'<b>明星经理</b>＝高分+低离散，<b>老好人经理</b>＝低分+低离散，'
         f'<b>高压经理</b>＝高分+高离散，<b>危险经理</b>＝低分+高离散。'
         f'例如老好人经理团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整。</div>'
         f'{svg}'
         f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
-        f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
+        f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.3f}，取自{med_src}）</div>'
     )
     if part == "chart":
         return chart
