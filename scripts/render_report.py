@@ -586,17 +586,21 @@ def question_table(unit, meta, compare_units=None, compare_labels=None):
     return f'<table><tr>{head}</tr>{"".join(rows)}</table>'
 
 
-def heat_table(rows_data, meta, row_label, extra_note="", show_tag=False):
+def heat_table(rows_data, meta, row_label, extra_note="", show_tag=False, show_pctl=True):
     """单位 × 维度热力表。
     rows_data: [(名称, unit_dict, 百分位, 缩进层级=0, manager_tag_or_None)]
     show_tag: 是否显示"效能标签"列（仅三级部门有意义）
+    show_pctl: 是否显示"内部百分位"列（一级部门仅 6-7 个，百分位对比无意义，默认关闭）
     """
     # 主管效能标签样式（低饱和同色系）
     tag_style = {"优秀标杆": ("#7faa90", "#e8f0eb"), "稳健": ("#57606a", "#f0f2f4"), "需辅导": ("#b86b6b", "#f3e8e8")}
     head = (f"<th>{esc(row_label)}</th><th class='num'>人数</th><th class='num'>综合</th>"
             + "".join(f"<th class='center'>{esc(d)}</th>"
                       for d in ["基本需求", "管理支持", "团队归属", "成长发展"])
-            + "<th class='num'>敬业%</th><th class='num'>怠工%</th><th class='num'>内部百分位</th><th class='num'>环比</th>")
+            + "<th class='num'>敬业%</th><th class='num'>怠工%</th>")
+    if show_pctl:
+        head += "<th class='num'>内部百分位</th>"
+    head += "<th class='num'>环比</th>"
     if show_tag:
         head += "<th>效能标签</th>"
     body = []
@@ -620,7 +624,8 @@ def heat_table(rows_data, meta, row_label, extra_note="", show_tag=False):
         dis_style = ('style="color:#b86b6b;font-weight:700"'
                      if not sup and eng["disengaged_pct"] >= 20 else "")
         cells.append(f"<td class='num' {dis_style}>{'*' if sup else f'{eng['disengaged_pct']:.0f}%'}</td>")
-        cells.append(f"<td class='num'>{'*' if sup or pctl is None else str(pctl)}</td>")
+        if show_pctl:
+            cells.append(f"<td class='num'>{'*' if sup or pctl is None else str(pctl)}</td>")
         cells.append(f"<td class='num'>{fmt_delta(u.get('grand_mean_delta'), sup) or '<span class=muted>—</span>'}</td>")
         if show_tag:
             if tag_val and not sup:
@@ -1621,7 +1626,7 @@ def render_ceo(data, insights):
     # 通栏：一级事业部横向对比
     rows = sorted(bus.items(), key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))
     body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>一级事业部横向对比</div>"
-             + heat_table([(n, u, u.get("percentile_vs_bus")) for n, u in rows], meta, "一级事业部")
+             + heat_table([(n, u, u.get("percentile_vs_bus")) for n, u in rows], meta, "一级事业部", show_pctl=False)
              + legend_html(meta) + "</div>")
 
     body += footnote(meta)
@@ -2006,7 +2011,6 @@ def render_vp_index(data, insights):
     body += '<div class="entry-grid">'
     ranked = sorted(bus.items(), key=lambda kv: (kv[1]["grand_mean"] is None, -(kv[1]["grand_mean"] or 0)))
     for bn, bu in ranked:
-        pctl = bu.get("percentile_vs_bus")
         n_l2 = len(bu["l2_units"])
         n_dept = sum(len(l2["departments"]) for l2 in bu["l2_units"].values())
         vp_file = f"VP看板_{safe_name(bn)}{period_suffix}.html"
@@ -2015,7 +2019,7 @@ def render_vp_index(data, insights):
                  f'<div class="entry-ctitle">{esc(bn)}</div>'
                  f'<div class="entry-cdesc">'
                  f'综合均值 <b>{bu["grand_mean"]}</b>（{esc(bu["grand_band"])}）'
-                 f' · 内部百分位 <b>{pctl if pctl is not None else "*"}</b><br>'
+                 f'<br>'
                  f'下辖 <b>{n_l2}</b> 个二级 / <b>{n_dept}</b> 个三级部门<br>'
                  f'敬业 {bu["engagement"]["engaged_pct"]:.0f}% · 怠工 {bu["engagement"]["disengaged_pct"]:.0f}%'
                  f'</div>'
