@@ -76,20 +76,6 @@ ROOT_CAUSES = {
     "Q11": ["员工不知道自己取得了哪些进步、下一步提升什么", "干部只派任务，很少提供辅导和成长反馈", "发展沟通只发生在年终，主要围绕绩效结论"],
     "Q12": ["工作内容长期重复，优秀员工看不到新的挑战", "没有通过新项目、复杂任务创造成长机会", "成长只靠自学，缺乏指引和资源支持"],
 }
-CONVERSATION_GUIDE = {
-    "Q1": "和成员逐一对齐：你认为'做好这份工作'的标准是什么？我写的标准你看得到吗？哪里对不上？",
-    "Q2": "问：你最近干活卡在哪个工具/信息/权限上？我帮你拆掉哪个最堵的？",
-    "Q3": "问：这周你做的事里哪件最让你来劲？我们能不能把这类活多排一点给你？",
-    "Q4": "（自查+询问）过去7天我认可过谁？问成员：什么样的认可对你最有效——当众、私下、还是具体的事后？",
-    "Q5": "聊点工作之外的：最近生活上有什么在消耗你精力的？我能怎么支持？",
-    "Q6": "问：你未来1-2年想往哪个方向走？现在的工作安排能不能给你铺路？缺什么我来争取。",
-    "Q7": "问：你觉得团队开会时你的意见被听进去了吗？哪次你觉得说了没用？为什么？",
-    "Q8": "问：你觉得团队开会时你的意见被听进去了吗？哪次你觉得说了没用？为什么？",
-    "Q9": "讲清楚这个季度的目标为什么重要、连到公司哪件事；问成员：你做的事你觉得自己在拼什么？",
-    "Q10": "问：你觉得团队里谁的工作质量你最放心/最不放心？卡点通常在哪？",
-    "Q11": "问：在团队里你有没有能说心里话的人？没有的话，我帮你搭一个这样的连接。",
-    "Q12": "和成员做一次发展意愿沟通：过去一年你在哪些方面有进步？接下来想往哪个方向发展（专业/管理/跨领域）？我能通过什么项目或任务给你创造成长机会？",
-}
 ACTION_HINT = {
     "Q1": "每周明确三项最高优先级及交付标准，与成员逐一确认双方理解一致",
     "Q2": "主动识别并解决工具、权限、信息和协作障碍，明确哪些需要向上协调",
@@ -1491,16 +1477,14 @@ def cross_dept_common(bu, meta, l2_name=None):
 # ---------- 经理人看板专属组件 ----------
 
 def rootcause_conversation(dept, meta, ins):
-    """根因假设 + 1:1对话指南：针对本团队薄弱题项"""
+    """根因假设：针对本团队薄弱题项"""
     bots = [q for q in dept["bottom_questions"] if q in meta["questions"]]
     if not bots:
         return ""
     ins_rc = (ins or {}).get("root_causes", {})
-    ins_cv = (ins or {}).get("conversation", {})
     parts = []
     for q in bots:
         rc = ins_rc.get(q) or ROOT_CAUSES.get(q, [])
-        cv = ins_cv.get(q) or CONVERSATION_GUIDE.get(q, "")
         rc_li = "".join(f"<li>{esc(r)}</li>" for r in rc)
         parts.append(
             f'<div class="block-card" style="border-left-color:#cf222e">'
@@ -1508,9 +1492,7 @@ def rootcause_conversation(dept, meta, ins):
             f'<span style="font-weight:400;font-size:12px">均值 {fmt(dept["questions"][q]["mean"])}'
             f' · {polarization_flag(dept["questions"][q].get("dist"), dept["n"])}</span></h4>'
             f'<div class="bdesc"><b>可能的根因</b>（自查哪条最像你的团队）:'
-            f'<ul style="margin-left:18px">{rc_li}</ul></div>'
-            f'<div style="background:#f6f8fa;border-radius:8px;padding:10px 14px;margin-top:8px">'
-            f'<b>1:1 对话指南</b>：{esc(cv)}</div></div>')
+            f'<ul style="margin-left:18px">{rc_li}</ul></div></div>')
     return '<div class="blocks">' + "".join(parts) + '</div>'
 
 
@@ -1968,7 +1950,7 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
     tl_html = action_timeline(insights, dept, meta)
     if rc_html:
         body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>优先改善项 "
-                 "<small>根因假设与 1:1 指南</small></div>" + rc_html + "</div>")
+                 "<small>根因假设与自查</small></div>" + rc_html + "</div>")
     if tl_html:
         body += ("<div class='vp-wide'><div class='ct'><span class='dot'></span>30天建议 "
                  "<small>按薄弱项排优先级</small></div>" + tl_html + "</div>")
@@ -1991,7 +1973,7 @@ def render_unified(data, insights):
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
         ("👤", "经理人（2级）部门报告", "各二级部门报告，内容与 VP 面板完全一致：层次诊断、三级部门负责人效能象限、维度对比、员工类型分布、员工群体洞察、管理者流失风险、行动建议", "经理人（2级）视角", "#e0f2fe", "#0369a1", mgr_l2_idx_file),
-        ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因 1:1 对话指南、逐题对比、团队员工群体洞察、30天建议", "经理人（3级）视角", "#dcfce7", "#15803d", mgr_idx_file),
+        ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因假设、逐题对比、团队员工群体洞察、30天建议", "经理人（3级）视角", "#dcfce7", "#15803d", mgr_idx_file),
     ]
     grid = '<div class="entry-grid">'
     for icon, title, desc, tag, bg, col, href in cards:
