@@ -1233,7 +1233,7 @@ def vp_hero(bu, meta, all_bus, bu_name, comp):
     n_pct = round(bu["n"] / total * 100, 1) if total > 0 else 0.0
     stats = [
         ("受访人数", str(bu["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
-        ("下辖结构", f"{n_l2}二级/{n_dept}三级", "", "#7c3aed", "textual"),
+        ("二级部门", str(n_l2), "参与调研", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
          "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
@@ -1285,7 +1285,6 @@ def manager_hero(dept, meta, bu, l2, comp, bu_name, l2_name):
     n_pct = round(dept["n"] / total * 100, 1) if total > 0 else 0.0
     stats = [
         ("受访人数", str(dept["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
-        ("隶属结构", f"{bu_name} / {l2_name}", "", "#7c3aed", "textual"),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
          "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
@@ -1806,7 +1805,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
     n_pct = round(l2["n"] / total_emp * 100, 1) if total_emp > 0 else 0.0
     stats = [
         ("受访人数", str(l2["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
-        ("下辖结构", f"{n_dept} 个三级", "", "#7c3aed", "textual"),
+        ("三级部门", str(n_dept), "参与调研", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
          "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
