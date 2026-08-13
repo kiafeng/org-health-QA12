@@ -1788,7 +1788,7 @@ def render_vp(data, bu_name, insights):
     period = meta.get("period") or ""
     n_l2 = len(bu["l2_units"])
     n_dept = sum(len(l2["departments"]) for l2 in bu["l2_units"].values())
-    body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角 · 经营与人才培养",
+    body = header_html(f"VP看板 · {bu_name}", "一级事业部负责人视角",
                        [period, f"受访 {bu['n']} 人", f"{n_l2} 个二级 / {n_dept} 个三级部门"])
     body += vp_hero(bu, meta, data["business_units"], bu_name, comp)
     # Q12 层次诊断（通栏：含 L4-L1、公司对比、诊断洞察）
@@ -1875,7 +1875,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
             f'<div>{gauge}</div><div>{pos_html}</div>'
             f'<div class="hero-stats">{stats_html}</div></div>')
 
-    body = header_html(f"经理人（2级） · {l2_name}", "二级部门负责人视角 · 经营与人才培养",
+    body = header_html(f"经理人（2级） · {l2_name}", "二级部门负责人视角",
                        [period, f"受访 {l2['n']} 人", f"{n_dept} 个三级部门"])
     body += hero
     # Q12 层次诊断（通栏）
@@ -1922,7 +1922,7 @@ def render_manager(data, bu_name, l2_name, dept_name, insights):
     dept = l2["departments"][dept_name]
     period = meta.get("period") or ""
     chain = f"{bu_name} / {l2_name} / {dept_name}"
-    body = header_html(f"经理人（3级） · {dept_name}", "三级部门负责人视角 · 带教与行为改进",
+    body = header_html(f"经理人（3级） · {dept_name}", "三级部门负责人视角",
                        [period, f"受访 {dept['n']} 人"], chain=chain)
 
     if dept["suppressed"]:
