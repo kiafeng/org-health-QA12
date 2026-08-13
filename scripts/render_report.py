@@ -41,13 +41,13 @@ DIM_ORDER = ["成长发展", "团队归属", "管理支持", "基本需求"]  # 
 DEFAULT_BENCHMARK = {"基本需求": 4.05, "管理支持": 3.85, "团队归属": 3.75, "成长发展": 3.65}
 DIM_COLOR = {"基本需求": "#a7c0cb", "管理支持": "#bbbbe0", "团队归属": "#e2bcbc", "成长发展": "#e3cf9c"}
 
-# 敬业/怠工行业基准（盖洛普全球常模 2023-2024）
+# 敬业/怠工行业基准（行业常模 2023-2024）
 INDUSTRY_BENCHMARK = {
     "global": {"engaged": 23, "disengaged": 18, "label": "全球均值"},
     "china":  {"engaged": 15, "disengaged": 25, "label": "中国均值"},
     "tech":   {"engaged": "20-30", "disengaged": "15-20", "label": "科技/互联网"},
 }
-INDUSTRY_BENCHMARK_SOURCE = "盖洛普全球常模（2023-2024）"
+INDUSTRY_BENCHMARK_SOURCE = "行业常模（2023-2024）"
 DEFAULT_BENCHMARK_REGION = "tech"  # 科技/互联网（公司所属行业）
 SCALE_MAX = 5.0
 
@@ -258,6 +258,7 @@ tr:hover td{background:#f9fafb}
 .hl .ttl{font-size:13px;font-weight:700;margin-bottom:8px}
 .footnote{margin-top:26px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:#9ca3af;line-height:1.8}
 .legend{font-size:12px;color:var(--sub);margin:6px 0 10px}
+.quad-hint{font-size:12px;color:#475569;line-height:1.7;background:#f8fafc;border:1px solid var(--line);border-left:4px solid #6366f1;border-radius:8px;padding:10px 14px;margin:0 0 14px}
 .legend .chip{margin-right:6px}
 .matrix{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
 .qcell{border:1px solid var(--line);border-radius:10px;padding:13px 15px;min-height:84px;box-shadow:var(--shadow)}
@@ -385,7 +386,7 @@ def meta_band_foot(unit, sup):
 
 
 def ladder_html(unit, meta, inline_text=False):
-    """盖洛普式四层阶梯金字塔。色块宽度随维度均值动态变化：分数越高色块越长。
+    """四层阶梯金字塔（敬业阶梯模型）。色块宽度随维度均值动态变化：分数越高色块越长。
     inline_text=True 时把核心问题/题目/评级放到色块内部，适合窄卡片。"""
     sup = unit["suppressed"]
     max_w = 500
@@ -681,7 +682,7 @@ def legend_html(meta):
 def footnote(meta, privacy=""):
     hist = f'对比上期: {esc(meta["prev_period"])} · ' if meta.get("has_history") and meta.get("prev_period") else ""
     scale_note = (f'本报告基于内部组织健康调研（{len(meta["questions"])} 题 / 5 分制）生成，'
-                  f'评分框架参考盖洛普 Q12 敬业阶梯模型。')
+                  f'评分框架参考 Q12 敬业阶梯模型。')
     priv = f'<br>{privacy}' if privacy else ""
     return (f'<div class="footnote">* 为保护员工匿名性，参与人数少于 {meta["min_n"]} 人的单位不显示分数'
             f'（数据抑制），但其数据仍计入上级汇总。 · {hist}{scale_note}{priv}</div>')
@@ -777,7 +778,7 @@ def hero_section(comp, meta, bus):
         ("受访人数", str(meta["total_respondents"]), _benchmark_note(meta, "total_pct", meta["total_respondents"]), "#2563eb", ""),
         ("一级事业部", str(len(bus)), "参与调研", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f"vs {bm['label']} {bm['engaged']}%",
-         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f"vs {bm['label']} {bm['disengaged']}%",
          "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
          "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
@@ -929,6 +930,49 @@ def classify_quadrant(mean, std, mean_med, std_med):
     return "高压经理"  # mean > mean_med and std > std_med
 
 
+def relax_labels(anchors, W, H, pad_l, pad_r, pad_t, pad_b, iters=90):
+    """轻量力导向：把密集气泡的标签推开避免重叠。
+    anchors: list of dict{cx, oy, w, h}（cx=气泡中心x, oy=理想标签y, w/h=包围盒尺寸）
+    返回与 anchors 等长的 [(x, y)] 最终标签坐标，并夹在绘图区内。"""
+    pos = [[a["cx"], a["oy"]] for a in anchors]
+    n = len(pos)
+    for _ in range(iters):
+        fx = [0.0] * n
+        fy = [0.0] * n
+        # 弹簧力：拉回理想位置
+        for i in range(n):
+            fx[i] += (anchors[i]["cx"] - pos[i][0]) * 0.06
+            fy[i] += (anchors[i]["oy"] - pos[i][1]) * 0.06
+        # 排斥力：重叠则沿最小重叠轴推开
+        for i in range(n):
+            for j in range(i + 1, n):
+                dx = pos[i][0] - pos[j][0]
+                dy = pos[i][1] - pos[j][1]
+                wi = anchors[i]["w"]
+                wj = anchors[j]["w"]
+                hi = anchors[i]["h"]
+                hj = anchors[j]["h"]
+                ox = (wi + wj) / 2.0 - abs(dx)
+                oy = (hi + hj) / 2.0 - abs(dy)
+                if ox > 0 and oy > 0:
+                    if ox < oy:
+                        s = (ox + 3) * (1 if dx >= 0 else -1)
+                        fx[i] += s * 0.5
+                        fx[j] -= s * 0.5
+                    else:
+                        s = (oy + 3) * (1 if dy >= 0 else -1)
+                        fy[i] += s * 0.5
+                        fy[j] -= s * 0.5
+        for i in range(n):
+            pos[i][0] += fx[i]
+            pos[i][1] += fy[i]
+            pos[i][0] = max(pad_l + anchors[i]["w"] / 2.0,
+                            min(W - pad_r - anchors[i]["w"] / 2.0, pos[i][0]))
+            pos[i][1] = max(pad_t + 12, min(H - pad_b - 2, pos[i][1]))
+    return pos
+
+
+
 def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     """主管效能象限：展示某层级下属团队的负责人分布。
     l2_name 不传时展示该事业部下属二级部门负责人；传入时展示该二级部门下属三级部门负责人。
@@ -1050,19 +1094,41 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">均分中位数 {mean_med:.2f}</text>'
         f'<text x="{pad_l-8}" y="{y_med-6:.1f}" text-anchor="end" font-size="10" fill="#6b7280">离散中位数 {std_med:.2f}</text>'
     )
-    # 气泡
+    # 气泡（标签经力导向防重叠，必要时用引线连接）
     max_n = max(it["n"] for it in items)
-    dots = ""
+    name_anchors = []
+    score_anchors = []
     for it in items:
+        cx, cy = x_pos(it["mean"]), y_pos(it["std"])
+        rad = 9 + (it["n"] / max_n) * 18
+        nw = max(48, len(it["l2"]) * 12 + 10)
+        name_anchors.append({"cx": cx, "oy": cy - rad - 8, "w": nw, "h": 16, "text": it["l2"]})
+        score_anchors.append({"cx": cx, "oy": cy + rad + 16, "w": 104, "h": 14,
+                              "text": f'{it["mean"]:.2f}分 · σ{it["std"]:.2f}'})
+    name_pos = relax_labels(name_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
+    score_pos = relax_labels(score_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
+    dots = ""
+    for i, it in enumerate(items):
         cx, cy = x_pos(it["mean"]), y_pos(it["std"])
         cfg = QUADRANT_CFG[it["quad"]]
         rad = 9 + (it["n"] / max_n) * 18
-        label_y = cy - rad - 6
+        nx, ny = name_pos[i]
+        sx, sy = score_pos[i]
+        lead = ""
+        if abs(ny - (cy - rad - 8)) > 4 or abs(nx - cx) > 4:
+            lead += (f'<line x1="{cx:.1f}" y1="{cy-rad:.1f}" x2="{nx:.1f}" y2="{ny+6:.1f}" '
+                     f'stroke="#cbd5e1" stroke-width="1"/>')
+        if abs(sy - (cy + rad + 16)) > 4 or abs(sx - cx) > 4:
+            lead += (f'<line x1="{cx:.1f}" y1="{cy+rad:.1f}" x2="{sx:.1f}" y2="{sy-6:.1f}" '
+                     f'stroke="#cbd5e1" stroke-width="1"/>')
         dots += (
             f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rad:.1f}" fill="{cfg["color"]}" fill-opacity=".78" stroke="#fff" stroke-width="2"/>'
             f'<text x="{cx:.1f}" y="{cy+4:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">{it["n"]}</text>'
-            f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151">{esc(it["l2"])}</text>'
-            f'<text x="{cx:.1f}" y="{cy+rad+14:.1f}" text-anchor="middle" font-size="10" fill="#6b7280">{it["mean"]:.2f}分 · σ{it["std"]:.2f}</text>'
+            + lead
+            + f'<text x="{nx:.1f}" y="{ny:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151" '
+              f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(it["l2"])}</text>'
+            + f'<text x="{sx:.1f}" y="{sy:.1f}" text-anchor="middle" font-size="10" fill="#6b7280" '
+              f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(score_anchors[i]["text"])}</text>'
         )
     svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
            f'{quads_bg}{dividers}{qlabels}{x_axis}{y_axis}{axis_titles}{med_notes}{dots}</svg>')
@@ -1122,6 +1188,11 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     )
 
     chart = (
+        f'<div class="quad-hint">本象限按<b>团队均分</b>（横轴，越右越好）与<b>人员间标准差 σ</b>（纵轴，越上越分化）'
+        f'为每位负责人定位，分界是<b>均分中位数 {mean_med:.2f}</b> 与 <b>离散中位数 {std_med:.2f}</b>'
+        f'（取自{med_src}；下属部门&lt;3 个时取全公司）。例如 <b>老好人经理</b>＝均分≤中位数 且 σ≤中位数：'
+        f'团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整；'
+        f'反之 <b>明星经理</b>＝均分&gt;中位数 且 σ≤中位数，是标杆。</div>'
         f'{svg}'
         f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
         f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.2f}，取自{med_src}）</div>'
@@ -1235,7 +1306,7 @@ def vp_hero(bu, meta, all_bus, bu_name, comp):
         ("受访人数", str(bu["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
         ("二级部门", str(n_l2), "参与调研", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
-         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
          "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
          "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
@@ -1286,7 +1357,7 @@ def manager_hero(dept, meta, bu, l2, comp, bu_name, l2_name):
     stats = [
         ("受访人数", str(dept["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
-         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
          "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
          "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
@@ -1537,7 +1608,7 @@ def render_ceo(data, insights):
     meta, comp, bus = data["meta"], data["company"], data["business_units"]
     period = meta.get("period") or ""
     scale_tag = "5 分制"
-    body = header_html("CEO看板 · 公司总览", f"CEO 视角 | 全公司 {len(meta['questions'])} 题组织健康调研（盖洛普 Q12 官方）",
+    body = header_html("CEO看板 · 公司总览", f"CEO 视角 | 全公司 {len(meta['questions'])} 题组织健康调研（Q12 官方问卷）",
                        [period, f"受访 {meta['total_respondents']} 人", f"{len(bus)} 个一级事业部", scale_tag])
 
     body += hero_section(comp, meta, bus)
@@ -1807,7 +1878,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
         ("受访人数", str(l2["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
         ("三级部门", str(n_dept), "参与调研", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
-         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（盖洛普 Q12 口径）"),
+         "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
          "#ef4444" if eng["disengaged_pct"] >= 20 else "#f59e0b",
          "个人均分 < 3.0 的员工视为怠工；3.0–3.9 为中立（不敬业）"),
