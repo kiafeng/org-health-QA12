@@ -1298,7 +1298,7 @@ def vp_hero(bu, meta, all_bus, bu_name, comp):
     n_pct = round(bu["n"] / total * 100, 1) if total > 0 else 0.0
     stats = [
         ("调研人数", str(bu["n"]), f"占员工总数 {n_pct}%", "#2563eb", ""),
-        ("二级部门", str(n_l2), "参与调研", "#7c3aed", ""),
+        ("二级部门参与的数量", str(n_l2), "", "#7c3aed", ""),
         ("敬业员工", f'{eng["engaged_pct"]:.0f}%', f'vs 公司 {ceng["engaged_pct"]:.0f}%',
          "#10b981", "个人均分 ≥ 4.0 的员工视为敬业（Q12 口径）"),
         ("怠工员工", f'{eng["disengaged_pct"]:.0f}%', f'vs 公司 {ceng["disengaged_pct"]:.0f}%',
