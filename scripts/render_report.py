@@ -967,7 +967,7 @@ def relax_labels(anchors, W, H, pad_l, pad_r, pad_t, pad_b, iters=90):
 def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     """主管效能象限：展示某层级下属团队的负责人分布。
     l2_name 不传时展示该事业部下属二级部门负责人；传入时展示该二级部门下属三级部门负责人。
-    横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆圈大小=团队人数；颜色=象限。
+    横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆点固定大小+白心，标签含部门名与人数，颜色=象限。
     """
     bu = data["business_units"][bu_name]
 
@@ -1051,12 +1051,16 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fee2e2" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{y_med:.1f}" width="{pad_l+pw-x_med:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#dbeafe" opacity=".55"/>'
     )
-    # 象限标签
+    # 象限标签：固定到对应象限的角落，避免压点位
     qlabels = (
-        f'<text x="{pad_l+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#d97706">⚠️ 老好人经理</text>'
-        f'<text x="{x_med+12}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#1a7f37">🌟 明星经理</text>'
-        f'<text x="{pad_l+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#dc2626">🚨 危险经理</text>'
-        f'<text x="{x_med+12}" y="{y_med+22}" font-size="13" font-weight="700" fill="#2563eb">🔥 高压经理</text>'
+        # 左上象限：老好人 → 左上角（左对齐）
+        f'<text x="{pad_l+10}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#d97706" text-anchor="start">⚠️ 老好人经理</text>'
+        # 右上象限：明星 → 右上角（右对齐）
+        f'<text x="{pad_l+pw-10}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#1a7f37" text-anchor="end">🌟 明星经理</text>'
+        # 左下象限：危险 → 左下角（左对齐）
+        f'<text x="{pad_l+10}" y="{H-pad_b-8:.1f}" font-size="13" font-weight="700" fill="#dc2626" text-anchor="start">🚨 危险经理</text>'
+        # 右下象限：高压 → 右下角（右对齐）
+        f'<text x="{pad_l+pw-10}" y="{H-pad_b-8:.1f}" font-size="13" font-weight="700" fill="#2563eb" text-anchor="end">🔥 高压经理</text>'
     )
     # 参考线（中位数）
     dividers = (
@@ -1087,39 +1091,59 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">均分中位数 {mean_med:.2f}</text>'
         f'<text x="{pad_l+6:.1f}" y="{y_med-8:.1f}" text-anchor="start" font-size="10" fill="#6b7280">离散中位数 {std_med:.3f}</text>'
     )
-    # 气泡（标签经力导向防重叠，必要时用引线连接）
-    max_n = max(it["n"] for it in items)
+    # 点位（小圆点固定大小，标签经力导向防重叠，必要时用引线连接）
+    DOT_R = 5  # 圆点半径（不再按人数缩放）
     name_anchors = []
     score_anchors = []
     for it in items:
         cx, cy = x_pos(it["mean"]), y_pos(it["std"])
-        rad = 9 + (it["n"] / max_n) * 18
-        nw = max(48, len(it["l2"]) * 12 + 10)
-        name_anchors.append({"cx": cx, "oy": cy - rad - 8, "w": nw, "h": 16, "text": it["l2"]})
-        score_anchors.append({"cx": cx, "oy": cy + rad + 16, "w": 104, "h": 14,
+        # 单行标签：部门名 + 人数（去内嵌数字）
+        label = f'{it["l2"]} · {it["n"]}人'
+        nw = max(72, len(it["l2"]) * 14 + 30)
+        name_anchors.append({"cx": cx, "oy": cy - DOT_R - 10, "w": nw, "h": 16, "text": label})
+        score_anchors.append({"cx": cx, "oy": cy + DOT_R + 16, "w": 110, "h": 14,
                               "text": f'{it["mean"]:.2f}分 · σ{it["std"]:.3f}'})
     name_pos = relax_labels(name_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
     score_pos = relax_labels(score_anchors, W, H, pad_l, pad_r, pad_t, pad_b)
+    # 检测点位近距离：< 2.5 倍半径即视为几乎重合
+    coords = []
+    for it in items:
+        coords.append((x_pos(it["mean"]), y_pos(it["std"])))
+    near_pairs = set()
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            dx = coords[i][0] - coords[j][0]
+            dy = coords[i][1] - coords[j][1]
+            if (dx * dx + dy * dy) ** 0.5 < DOT_R * 2.5:
+                near_pairs.add(i)
+                near_pairs.add(j)
     dots = ""
     for i, it in enumerate(items):
-        cx, cy = x_pos(it["mean"]), y_pos(it["std"])
+        cx, cy = coords[i]
         cfg = QUADRANT_CFG[it["quad"]]
-        rad = 9 + (it["n"] / max_n) * 18
         nx, ny = name_pos[i]
         sx, sy = score_pos[i]
+        # 近距离点：叠加白色宽描边 + 内白心，制造视觉区分
+        is_near = i in near_pairs
+        dot_stroke = '#fff'
+        dot_stroke_w = 2.2
+        if is_near and len(near_pairs) > 1:
+            # 同簇内的点轮流用 dashed + 实心描边强化区分
+            idx_in_cluster = sorted(near_pairs).index(i)
+            dot_stroke_w = 2.2 + (idx_in_cluster % 2) * 1.6
         lead = ""
-        if abs(ny - (cy - rad - 8)) > 4 or abs(nx - cx) > 4:
-            lead += (f'<line x1="{cx:.1f}" y1="{cy-rad:.1f}" x2="{nx:.1f}" y2="{ny+6:.1f}" '
+        if abs(ny - (cy - DOT_R - 10)) > 4 or abs(nx - cx) > 4:
+            lead += (f'<line x1="{cx:.1f}" y1="{cy-DOT_R:.1f}" x2="{nx:.1f}" y2="{ny+6:.1f}" '
                      f'stroke="#cbd5e1" stroke-width="1"/>')
-        if abs(sy - (cy + rad + 16)) > 4 or abs(sx - cx) > 4:
-            lead += (f'<line x1="{cx:.1f}" y1="{cy+rad:.1f}" x2="{sx:.1f}" y2="{sy-6:.1f}" '
+        if abs(sy - (cy + DOT_R + 16)) > 4 or abs(sx - cx) > 4:
+            lead += (f'<line x1="{cx:.1f}" y1="{cy+DOT_R:.1f}" x2="{sx:.1f}" y2="{sy-6:.1f}" '
                      f'stroke="#cbd5e1" stroke-width="1"/>')
         dots += (
-            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rad:.1f}" fill="{cfg["color"]}" fill-opacity=".78" stroke="#fff" stroke-width="2"/>'
-            f'<text x="{cx:.1f}" y="{cy+4:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">{it["n"]}</text>'
+            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{DOT_R}" fill="{cfg["color"]}" fill-opacity=".85" stroke="{dot_stroke}" stroke-width="{dot_stroke_w}"/>'
+            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="1.6" fill="#fff"/>'
             + lead
-            + f'<text x="{nx:.1f}" y="{ny:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#374151" '
-              f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(it["l2"])}</text>'
+            + f'<text x="{nx:.1f}" y="{ny:.1f}" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2937" '
+              f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(name_anchors[i]["text"])}</text>'
             + f'<text x="{sx:.1f}" y="{sy:.1f}" text-anchor="middle" font-size="10" fill="#6b7280" '
               f'paint-order="stroke" stroke="#fff" stroke-width="3" stroke-linejoin="round">{esc(score_anchors[i]["text"])}</text>'
         )
@@ -1188,8 +1212,8 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<b>高压经理</b>＝高分+高离散，<b>危险经理</b>＝低分+高离散。'
         f'例如老好人经理团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整。</div>'
         f'{svg}'
-        f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 圆圈大小=团队人数 · '
-        f'颜色=象限 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.3f}，取自{med_src}）</div>'
+        f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 颜色=象限 · 标签内显示部门名+人数 · '
+        f'两点过近时叠加白色描边区分 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.3f}，取自{med_src}）</div>'
     )
     if part == "chart":
         return chart
