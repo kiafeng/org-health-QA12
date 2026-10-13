@@ -122,6 +122,21 @@ def band(mean):
             return name
     return "预警"
 
+def classify_climate(p45, p5, p12):
+    """组织气氛类型判定（按同事标准《组织气氛类型判断标准》，同时满足多重门槛）：
+    高效型: 4/5分占比≥80% 且 5分占比≥20% 且 1/2分占比<5%
+    激发型: 4/5分占比≥70% 且 5分占比≥15% 且 1/2分占比<10%
+    中立型: 4/5分占比≥60%（未达上两档时）
+    消极型: 4/5分占比<60%
+    p45/p5/p12 均为百分比（0-100）。优先级 高效>激发>中立>消极。"""
+    if p45 >= 80 and p5 >= 20 and p12 < 5:
+        return "高效型"
+    if p45 >= 70 and p5 >= 15 and p12 < 10:
+        return "激发型"
+    if p45 >= 60:
+        return "中立型"
+    return "消极型"
+
 def r2(x):
     return None if x is None else round(x, 2)
 
@@ -189,8 +204,14 @@ def agg_unit(members, min_n):
     unit = {"n": n, "suppressed": n < min_n}
     # 逐题
     q_stats = {}
+    # 部门级汇总答复分布（5 档）：所有题目作答的 1/2/3/4/5 分计数，用于组织气氛类型判定
+    pool = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    pool_total = 0
     for q in QPRESENT:
         vals = [m["scores"][q] for m in members if m["scores"][q] is not None]
+        for v in vals:
+            pool[int(v)] += 1
+            pool_total += 1
         q_stats[q] = {
             "mean": r2(sum(vals) / len(vals)) if vals else None,
             "n": len(vals),
@@ -204,6 +225,17 @@ def agg_unit(members, min_n):
         }
         q_stats[q]["band"] = band(q_stats[q]["mean"])
     unit["questions"] = q_stats
+    # 组织气氛类型（按部门汇总答复分布，同事标准《组织气氛类型判断标准》）
+    if pool_total:
+        p45 = 100 * (pool[4] + pool[5]) / pool_total
+        p5 = 100 * pool[5] / pool_total
+        p12 = 100 * (pool[1] + pool[2]) / pool_total
+        unit["climate"] = {
+            "p45": r2(p45), "p5": r2(p5), "p12": r2(p12),
+            "type": classify_climate(p45, p5, p12),
+        }
+    else:
+        unit["climate"] = {"p45": None, "p5": None, "p12": None, "type": "消极型"}
     # 维度
     dims = {}
     for dname, dcfg in DIMENSIONS.items():

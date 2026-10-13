@@ -1503,8 +1503,9 @@ def action_timeline(ins, dept, meta):
 
 
 def employee_type_distribution(data, bu_name, meta, l2_name=None):
-    """员工类型分布：本BU（或指定二级部门）下所有三级部门 100% 堆叠条形图。
-    l2_name 传入时仅展示该二级部门下属的三级部门。"""
+    """组织气氛类型分布（按同事标准《组织气氛类型判断标准》）：
+    对本BU（或指定二级部门）下每个三级部门，用其汇总答复分布（4/5分占比、5分占比、1/2分占比）
+    判定部门级气氛类型。l2_name 传入时仅展示该二级部门下属的三级部门。"""
     bu = data["business_units"].get(bu_name, {})
     l2_units = {l2_name: bu["l2_units"][l2_name]} if l2_name else bu.get("l2_units", {})
     rows = []
@@ -1512,66 +1513,59 @@ def employee_type_distribution(data, bu_name, meta, l2_name=None):
         for dn, d in l2["departments"].items():
             if d["suppressed"]:
                 continue
-            eng = d["engagement"]
-            gm = d["grand_mean"] or 0
-            # 把敬业拆成 激发(4.0-4.5) / 高效(>=4.5)
-            ratio = max(0.0, min(1.0, (gm - 4.0) / 1.0))
-            high = eng["engaged_pct"] * ratio
-            inspired = eng["engaged_pct"] - high
-            neg = eng["disengaged_pct"]
-            neu = eng["neutral_pct"]
-            total = neg + neu + inspired + high
-            if total <= 0:
-                continue
-            # 归一化到 100%，避免舍入误差
-            neg, neu, inspired, high = [100 * v / total for v in [neg, neu, inspired, high]]
+            c = d.get("climate") or {}
             rows.append({
-                "name": f"{l2n} / {dn}", "n": d["n"], "mean": gm,
-                "neg": neg, "neu": neu, "inspired": inspired, "high": high,
+                "name": f"{l2n} / {dn}", "n": d["n"],
+                "p45": c.get("p45"), "p5": c.get("p5"), "p12": c.get("p12"),
+                "type": c.get("type", "消极型"),
             })
-
     if not rows:
         return ""
 
-    # 按消极占比降序，相同则按均值降序
-    rows.sort(key=lambda x: (-x["neg"], -x["mean"]))
+    TYPE_ORDER = ["消极型", "中立型", "激发型", "高效型"]
+    COLORS = {"高效型": "#1a7f37", "激发型": "#0d9488", "中立型": "#6b7280", "消极型": "#dc2626"}
+    BG = {"高效型": "#dcfce7", "激发型": "#ccfbf1", "中立型": "#f3f4f6", "消极型": "#fee2e2"}
+    counts = {t: sum(1 for r in rows if r["type"] == t) for t in TYPE_ORDER}
+    # 风险优先：消极→中立→激发→高效，同类型按 4/5分占比升序（越低越靠前）
+    rows.sort(key=lambda r: (TYPE_ORDER.index(r["type"]), r["p45"] if r["p45"] is not None else 999))
+    title_sub = (f"共 {len(rows)} 个部门：高效 {counts['高效型']} · 激发 {counts['激发型']} · "
+                 f"中立 {counts['中立型']} · 消极 {counts['消极型']}")
+    chips = "".join(
+        f'<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'
+        f'background:{BG[t]};color:{COLORS[t]};border:1px solid {COLORS[t]}40;margin:2px">{t} {counts[t]}</span>'
+        for t in TYPE_ORDER)
 
-    # 标题旁的小结论
-    top_neg = rows[0]
-    title_sub = f"消极型员工占比最高：{top_neg['name']}（{top_neg['neg']:.0f}%）"
-
-    colors = {"neg": "#e52529", "neu": "#9ca3af", "inspired": "#5eead4", "high": "#0d9488"}
-    labels = {"neg": "消极", "neu": "中立", "inspired": "激发", "high": "高效"}
+    def pct(v):
+        return f"{v:.0f}%" if v is not None else "—"
 
     html_rows = []
     for r in rows:
-        segs = []
-        for key in ["neg", "neu", "inspired", "high"]:
-            v = r[key]
-            if v > 0:
-                text = f"{v:.0f}%" if v >= 8 else ""
-                segs.append(f'<div class="etype-seg" style="width:{v:.1f}%;background:{colors[key]}"><span>{text}</span></div>')
-        bar = '<div class="etype-bar-wrap">' + "".join(segs) + '</div>'
-        neg_cls = " high" if r["neg"] >= 30 else ""
+        col = COLORS[r["type"]]; bgc = BG[r["type"]]
         html_rows.append(
             f'<div class="etype-row">'
             f'<div class="etype-name">{esc(r["name"])}<span class="n">n={r["n"]}</span></div>'
-            f'{bar}'
-            f'<div class="etype-neg{neg_cls}">{r["neg"]:.0f}%</div>'
-            f'</div>'
+            f'<div style="flex:0 0 auto;padding:3px 12px;border-radius:10px;font-size:13px;font-weight:700;'
+            f'background:{bgc};color:{col};border:1px solid {col}55">{r["type"]}</div>'
+            f'<div style="flex:1;display:flex;gap:18px;font-size:13px;color:#4b5563;'
+            f'justify-content:flex-end">'
+            f'<span>4/5分 <b style="color:{col}">{pct(r["p45"])}</b></span>'
+            f'<span>5分 <b style="color:{col}">{pct(r["p5"])}</b></span>'
+            f'<span>1/2分 <b style="color:{col}">{pct(r["p12"])}</b></span>'
+            f'</div></div>'
         )
-
-    legend = "".join(
-        f'<span><i class="etype-dot" style="background:{colors[k]}"></i>{labels[k]}</span>'
-        for k in ["neg", "neu", "inspired", "high"]
-    )
 
     return (
         f'<div class="etype-chart">'
-        f'<div class="etype-head"><div class="etype-title">员工类型分布</div>'
-        f'<div class="etype-sub">{esc(title_sub)} · 按个人均分估算 · 消极≥30%标红</div></div>'
+        f'<div class="etype-head"><div class="etype-title">组织气氛类型分布</div>'
+        f'<div class="etype-sub">{esc(title_sub)} · 按部门汇总答复分布判定</div></div>'
+        f'<div style="margin:6px 0 14px">{chips}</div>'
         f'{"".join(html_rows)}'
-        f'<div class="etype-legend">{legend}</div>'
+        f'<div style="margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;'
+        f'border-radius:8px;font-size:12px;color:#6b7280;line-height:1.6">'
+        f'<b>判定标准（组织气氛类型判断标准）：</b>'
+        f'高效型 ＝ 4/5分占比≥80% 且 5分占比≥20% 且 1/2分占比&lt;5%；'
+        f'激发型 ＝ 4/5分占比≥70% 且 5分占比≥15% 且 1/2分占比&lt;10%；'
+        f'中立型 ＝ 4/5分占比≥60%（未达上两档）；消极型 ＝ 4/5分占比&lt;60%。</div>'
         f'</div>'
     )
 
@@ -2100,13 +2094,16 @@ def render_about(data, insights):
         f'<div class="ab-quad">{quad_svg}</div></div>'
         # 6 员工类型分布
         f'<div class="ab-section"><h2>六、员工类型分布</h2>'
-        f'<p class="lead">把敬业度拆成四类，按部门做 100% 堆叠展示，按消极型占比降序，'
-        f'帮管理者一眼看到"问题集中在哪些团队"。</p>'
+        f'<p class="lead">把每个部门的所有作答汇总，按<b>答复分布</b>判定其<b>组织气氛类型</b>'
+        f'（参考《组织气氛类型判断标准》），帮管理者一眼看到"哪些团队气氛健康、哪些需要干预"。</p>'
         f'<div class="ab-kv">'
-        f'<span class="ab-pill">高效型 · 敬业且均分≥4.5</span>'
-        f'<span class="ab-pill">激发型 · 敬业但 4.0–4.5</span>'
-        f'<span class="ab-pill">中立型 · 中间态度</span>'
-        f'<span class="ab-pill">消极型 · 怠工/低投入</span></div></div>'
+        f'<span class="ab-pill">高效型 · 4/5分≥80% 且 5分≥20% 且 1/2分&lt;5%</span>'
+        f'<span class="ab-pill">激发型 · 4/5分≥70% 且 5分≥15% 且 1/2分&lt;10%</span>'
+        f'<span class="ab-pill">中立型 · 4/5分≥60%（未达上两档）</span>'
+        f'<span class="ab-pill">消极型 · 4/5分&lt;60%</span></div>'
+        f'<div class="ab-tip">判定基于部门级<b>汇总答复分布</b>（全部题目作答中打 4/5 分、打 5 分、打 1/2 分的比例），'
+        f'而非个人均分——同一组"高效/激发/中立/消极"名称，回答的是"这个团队整体是什么气氛"，'
+        f'与按个人均分划分的员工敬业度分布是不同的视角。</div></div>'
         # 7 数据口径与匿名
         f'<div class="ab-section"><h2>七、数据口径与匿名保护</h2>'
         f'<div class="ab-grid">'
@@ -2419,7 +2416,7 @@ def vp_manager_risk(bu, meta, unit_label="本事业部"):
         ("高危管理者", s.get("high_risk", 0), "#ef4444"),
         ("需关注", s.get("watch", 0), "#f59e0b"),
         ("稳定", s.get("stable", 0), "#10b981"),
-        ("管理者风险率", f"{s.get('risk_rate', 0):.0f}%", "#7c3aed"),
+        ("管理者风险率", (f"{s['risk_rate']:.0f}%" if s.get('risk_rate') is not None else "—"), "#7c3aed"),
     ]
     cards_html = "".join(
         f'<div class="hero-stat"><div class="hs-label">{esc(l)}</div>'
