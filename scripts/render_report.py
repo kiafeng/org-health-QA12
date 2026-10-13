@@ -865,40 +865,28 @@ def scatter_matrix(bus, meta):
 
 # ---------- VP 看板：经理人效能象限（依据《经理效能矩阵·离散数据计算标准》） ----------
 # 指标：团队均分 = 所辖成员各题均分的平均（1-5 分制）；离散度 = 个人均分的样本标准差（n-1）
-# 阈值：所有经理团队均分的中位数 / 离散度的中位数（文档要求用中位数而非均值，抗极端值）
-# 四象限（文档 2.2 / 2.3）：
-#   明星经理  = 均分>中位数 且 离散度<=中位数  → 保持标杆
-#   危险经理  = 均分<=中位数 且 离散度>中位数  → 最高优先级，立即干预
-#   老好人经理 = 均分<=中位数 且 离散度<=中位数 → 高优先级，团队一致不满、问题在经理本人
-#   高压经理  = 均分>中位数 且 离散度>中位数  → 中高优先级，内部分化、关注嫡系分化
+# 阈值（内部参照）：全公司同级单位「团队均分的中位数 / 一致性(σ)的中位数」（用中位数抗极端值，且不随单个事业部内部样本浮动）
+# 区域（按相对内部参照线的位置划分，不按"经理类型"命名）：
+#   高均分·低离散 = 均分>中位 且 离散<=中位  → 右上，标杆
+#   低均分·高离散 = 均分<=中位 且 离散>中位  → 左下，重点排查
+#   低均分·低离散 = 均分<=中位 且 离散<=中位 → 左上，系统性因素更可能
+#   高均分·高离散 = 均分>中位 且 离散>中位  → 右下，关注分化
 QUADRANT_CFG = {
-    "明星经理": {
-        "color": "#1a7f37", "bg": "#dcfce7", "icon": "🌟",
-        "trait": "团队整体优 秀且意⻅⼀致",
-        "subtext": "管理有方，团队凝聚⼒强",
-        "action": "保持，作为标杆",
-        "priority": "—",
+    "高均分·低离散": {
+        "color": "#1a7f37", "bg": "#dcfce7",
+        "desc": "团队评价高且高度一致，表现是标杆",
     },
-    "危险经理": {
-        "color": "#dc2626", "bg": "#fee2e2", "icon": "🚨",
-        "trait": "团队整体差 且意⻅分化严重",
-        "subtext": "团队已经散了，需立即⼲预",
-        "action": "立即介入、单独辅导",
-        "priority": "最高",
+    "低均分·高离散": {
+        "color": "#dc2626", "bg": "#fee2e2",
+        "desc": "团队评价低且分歧大，局部矛盾突出，需重点排查",
     },
-    "老好人经理": {
-        "color": "#d97706", "bg": "#fef3c7", "icon": "⚠️",
-        "trait": "团队整体差 但意⻅⼀致",
-        "subtext": "⼤家⼀致不满，问题在经理本⼈",
-        "action": "换经理 / 重点赋能",
-        "priority": "高",
+    "低均分·低离散": {
+        "color": "#d97706", "bg": "#fef3c7",
+        "desc": "团队评价低但意见一致，问题更可能来自系统性因素",
     },
-    "高压经理": {
-        "color": "#2563eb", "bg": "#dbeafe", "icon": "🔥",
-        "trait": "团队整体好 但内部分化",
-        "subtext": "有⼈很好有⼈很差，可能嫡系分化",
-        "action": "关注分化、拉平体验",
-        "priority": "中高",
+    "高均分·高离散": {
+        "color": "#2563eb", "bg": "#dbeafe",
+        "desc": "团队评价高但内部分化，部分人体验明显偏差",
     },
 }
 # 文档 6.2 离散度解读（6 分制经验值）；本看板用 1-5 分制均值，按比例缩放后供量级参考
@@ -911,14 +899,14 @@ STD_BANDS = [
 
 
 def classify_quadrant(mean, std, mean_med, std_med):
-    """文档 2.2 象限判定：均分>中位数 且 离散度<=中位数 → 明星；其余依此类推。"""
+    """区域判定（按内部参照线）：均分>中位 且 离散<=中位 → 高均分·低离散；其余依此类推。"""
     if mean > mean_med and std <= std_med:
-        return "明星经理"
+        return "高均分·低离散"
     if mean <= mean_med and std > std_med:
-        return "危险经理"
+        return "低均分·高离散"
     if mean <= mean_med and std <= std_med:
-        return "老好人经理"
-    return "高压经理"  # mean > mean_med and std > std_med
+        return "低均分·低离散"
+    return "高均分·高离散"  # mean > mean_med and std > std_med
 
 
 def relax_labels(anchors, W, H, pad_l, pad_r, pad_t, pad_b, iters=90):
@@ -967,7 +955,7 @@ def relax_labels(anchors, W, H, pad_l, pad_r, pad_t, pad_b, iters=90):
 def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     """主管效能象限：展示某层级下属团队的负责人分布。
     l2_name 不传时展示该事业部下属二级部门负责人；传入时展示该二级部门下属三级部门负责人。
-    横轴=团队均分(1-5)，纵轴=人员间标准差；参考线为两条中位数；圆点固定大小+白心，标签含部门名与人数，颜色=象限。
+    横轴=团队均分(1-5)，纵轴=团队内部打分一致性(σ)；阈值取全公司同级中位数(内部参照线)；圆点固定大小+白心，标签含部门名与人数，颜色=区域位置。
     """
     bu = data["business_units"][bu_name]
 
@@ -995,32 +983,28 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         if not items:
             return '<div class="muted">本事业部暂无可展示的二级部门数据</div>'
 
-    # 中位数阈值：优先本层级，不足 3 个回退全公司同层级
+    # 内部参照（阈值）：全公司同级单位的中位数，作为统一基准（不随单个事业部内部样本浮动）
     means = [it["mean"] for it in items]
     stds = [it["std"] for it in items]
-    if len(items) >= 3:
-        mean_med = statistics.median(means)
-        std_med = statistics.median(stds)
-        med_src = scope_desc
+    if l2_name is not None:
+        all_means, all_stds = [], []
+        for bn, b in data["business_units"].items():
+            for l2n, l2 in b["l2_units"].items():
+                for dn, d in l2["departments"].items():
+                    if d.get("grand_mean") is not None:
+                        all_means.append(d["grand_mean"])
+                        all_stds.append(d.get("score_std") or 0)
+        med_src = "全公司三级部门"
     else:
         all_means, all_stds = [], []
-        if l2_name is not None:
-            for bn, b in data["business_units"].items():
-                for l2n, l2 in b["l2_units"].items():
-                    for dn, d in l2["departments"].items():
-                        if d.get("grand_mean") is not None:
-                            all_means.append(d["grand_mean"])
-                            all_stds.append(d.get("score_std") or 0)
-            med_src = "全公司三级部门"
-        else:
-            for bn, b in data["business_units"].items():
-                for l2n, l2 in b["l2_units"].items():
-                    if l2.get("grand_mean") is not None:
-                        all_means.append(l2["grand_mean"])
-                        all_stds.append(l2.get("score_std") or 0)
-            med_src = "全公司二级部门"
-        mean_med = statistics.median(all_means) if all_means else 0
-        std_med = statistics.median(all_stds) if all_stds else 0
+        for bn, b in data["business_units"].items():
+            for l2n, l2 in b["l2_units"].items():
+                if l2.get("grand_mean") is not None:
+                    all_means.append(l2["grand_mean"])
+                    all_stds.append(l2.get("score_std") or 0)
+        med_src = "全公司二级部门"
+    mean_med = statistics.median(all_means) if all_means else 0
+    std_med = statistics.median(all_stds) if all_stds else 0
 
     for it in items:
         it["quad"] = classify_quadrant(it["mean"], it["std"], mean_med, std_med)
@@ -1051,16 +1035,16 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         f'<rect x="{pad_l}" y="{y_med:.1f}" width="{x_med-pad_l:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#fee2e2" opacity=".55"/>'
         f'<rect x="{x_med:.1f}" y="{y_med:.1f}" width="{pad_l+pw-x_med:.1f}" height="{pad_t+ph-y_med:.1f}" fill="#dbeafe" opacity=".55"/>'
     )
-    # 象限标签：固定到对应象限的角落，避免压点位
+    # 区域标签：固定到对应象限的角落，描述相对内部参照线的位置（不使用经理类型命名）
     qlabels = (
-        # 左上象限：老好人 → 左上角（左对齐）
-        f'<text x="{pad_l+10}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#d97706" text-anchor="start">⚠️ 老好人经理</text>'
-        # 右上象限：明星 → 右上角（右对齐）
-        f'<text x="{pad_l+pw-10}" y="{pad_t+20}" font-size="13" font-weight="700" fill="#1a7f37" text-anchor="end">🌟 明星经理</text>'
-        # 左下象限：危险 → 左下角（左对齐）
-        f'<text x="{pad_l+10}" y="{H-pad_b-8:.1f}" font-size="13" font-weight="700" fill="#dc2626" text-anchor="start">🚨 危险经理</text>'
-        # 右下象限：高压 → 右下角（右对齐）
-        f'<text x="{pad_l+pw-10}" y="{H-pad_b-8:.1f}" font-size="13" font-weight="700" fill="#2563eb" text-anchor="end">🔥 高压经理</text>'
+        # 左上：低均分 + 低离散（低于内部参照 · 高度一致）
+        f'<text x="{pad_l+10}" y="{pad_t+20}" font-size="12" font-weight="700" fill="#92400e" text-anchor="start">低于内部参照 · 高度一致</text>'
+        # 右上：高均分 + 低离散（高于内部参照 · 高度一致）
+        f'<text x="{pad_l+pw-10}" y="{pad_t+20}" font-size="12" font-weight="700" fill="#166534" text-anchor="end">高于内部参照 · 高度一致</text>'
+        # 左下：低均分 + 高离散（低于内部参照 · 分歧较大）
+        f'<text x="{pad_l+10}" y="{H-pad_b-8:.1f}" font-size="12" font-weight="700" fill="#991b1b" text-anchor="start">低于内部参照 · 分歧较大</text>'
+        # 右下：高均分 + 高离散（高于内部参照 · 分歧较大）
+        f'<text x="{pad_l+pw-10}" y="{H-pad_b-8:.1f}" font-size="12" font-weight="700" fill="#1e40af" text-anchor="end">高于内部参照 · 分歧较大</text>'
     )
     # 参考线（中位数）
     dividers = (
@@ -1083,13 +1067,13 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
         for t in y_ticks
     )
     axis_titles = (
-        f'<text x="{pad_l+pw/2:.1f}" y="{H-10}" text-anchor="middle" font-size="12" fill="#6b7280">团队均分（横轴 → 越右越好）</text>'
-        f'<text x="18" y="{pad_t+ph/2:.1f}" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90 18 {pad_t+ph/2:.1f})">↓ 人员间标准差（离散度）</text>'
+        f'<text x="{pad_l+pw/2:.1f}" y="{H-10}" text-anchor="middle" font-size="12" fill="#6b7280">团队均分（横轴 → 越右评价越高）</text>'
+        f'<text x="18" y="{pad_t+ph/2:.1f}" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90 18 {pad_t+ph/2:.1f})">团队内部打分一致性（越上越一致 / 越下越分化）</text>'
     )
-    # 中位数标注
+    # 内部参照线标注
     med_notes = (
-        f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">均分中位数 {mean_med:.2f}</text>'
-        f'<text x="{pad_l+6:.1f}" y="{y_med-8:.1f}" text-anchor="start" font-size="10" fill="#6b7280">离散中位数 {std_med:.3f}</text>'
+        f'<text x="{x_med:.1f}" y="{pad_t-8}" text-anchor="middle" font-size="10" fill="#6b7280">内部参照线 · 均分 {mean_med:.2f}</text>'
+        f'<text x="{pad_l+6:.1f}" y="{y_med-8:.1f}" text-anchor="start" font-size="10" fill="#6b7280">内部参照线 · 一致性 {std_med:.3f}</text>'
     )
     # 点位（小圆点固定大小，标签经力导向防重叠，必要时用引线连接）
     DOT_R = 5  # 圆点半径（不再按人数缩放）
@@ -1150,29 +1134,7 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
     svg = (f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px;margin:0 auto;display:block">'
            f'{quads_bg}{dividers}{qlabels}{x_axis}{y_axis}{axis_titles}{med_notes}{dots}</svg>')
 
-    # 四象限摘要卡片（按文档 2.3 画像：特征 / 潜台词 / 干预优先级）
-    quad_cards = []
-    order = ["明星经理", "危险经理", "老好人经理", "高压经理"]
-    for name in order:
-        cfg = QUADRANT_CFG[name]
-        members = [it for it in items if it["quad"] == name]
-        if members:
-            member_lines = " · ".join(f"{it['l2']}（{it['n']}人）" for it in members[:3])
-            if len(members) > 3:
-                member_lines += f" 等{len(members)}个"
-        else:
-            member_lines = "暂无"
-        quad_cards.append(
-            f'<div style="flex:1;min-width:200px;background:{cfg["bg"]};border:1px solid {cfg["color"]}40;border-radius:12px;padding:14px">'
-            f'<div style="font-size:15px;font-weight:700;color:{cfg["color"]};margin-bottom:4px">{cfg["icon"]} {name}</div>'
-            f'<div style="font-size:12px;color:#4b5563;margin-bottom:6px">{cfg["trait"]}</div>'
-            f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px"><b>潜台词：</b>{cfg["subtext"]}<br/><b>干预优先级：</b>{cfg["priority"]}</div>'
-            f'<div style="font-size:12px;color:#374151;line-height:1.5"><b>落位部门：</b>{esc(member_lines)}</div>'
-            f'</div>'
-        )
-    cards_html = f'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:18px">{"".join(quad_cards)}</div>'
-
-    # 三级部门象限解读表
+    # 区域落位解读表（按相对内部参照线的位置描述，不按经理类型命名）
     rows = []
     for it in sorted(items, key=lambda x: (-x["mean"], x["std"])):
         cfg = QUADRANT_CFG[it["quad"]]
@@ -1187,41 +1149,39 @@ def manager_quadrant_html(data, bu_name, meta, part="all", l2_name=None):
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["n"]}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["mean"]:.2f}</td>'
             f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center">{it["std"]:.3f}</td>'
-            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center"><span style="color:{cfg["color"]};font-weight:700">{cfg["icon"]} {it["quad"]}</span></td>'
-            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);color:#4b5563;font-size:13px">{esc(band_txt)} · {esc(cfg["subtext"])}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);text-align:center"><span style="color:{cfg["color"]};font-weight:700">{esc(it["quad"])}</span></td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid var(--line);color:#4b5563;font-size:13px">{esc(band_txt)} · {esc(cfg["desc"])}</td>'
             f'</tr>'
         )
     table_html = (
-        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">{esc(scope_word)}象限解读</h4>'
+        f'<h4 style="margin:24px 0 12px 0;color:#1f2937;font-size:15px">{esc(scope_word)}区域落位解读</h4>'
         f'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
         f'<thead><tr style="background:#f3f4f6">'
         f'<th style="padding:10px 12px;text-align:left;font-weight:700">{esc(scope_word)}</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">人数</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">团队均分</th>'
         f'<th style="padding:10px 12px;text-align:center;font-weight:700">标准差</th>'
-        f'<th style="padding:10px 12px;text-align:center;font-weight:700">象限定位</th>'
-        f'<th style="padding:10px 12px;text-align:left;font-weight:700">离散度解读与潜台词</th>'
+        f'<th style="padding:10px 12px;text-align:center;font-weight:700">区域位置</th>'
+        f'<th style="padding:10px 12px;text-align:left;font-weight:700">离散度解读与区域说明</th>'
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
     )
 
     chart = (
-        f'<div class="quad-hint">本象限按<b>团队均分</b>（横轴，越右越好）与<b>人员间标准差 σ</b>（纵轴，越上越一致 / 越下越分化）'
-        f'为每位负责人定位，分界是<b>均分中位数 {mean_med:.2f}</b> 与 <b>离散中位数 {std_med:.3f}</b>'
-        f'（取自{med_src}；下属部门&lt;3 个时取全公司）。四象限对应：'
-        f'<b>明星经理</b>＝高分+低离散，<b>老好人经理</b>＝低分+低离散，'
-        f'<b>高压经理</b>＝高分+高离散，<b>危险经理</b>＝低分+高离散。'
-        f'例如老好人经理团队分数整体偏低、但人人评价高度一致，说明问题在经理本人而非个别员工，应优先赋能或调整。</div>'
+        f'<div class="quad-hint">每个点是一位管理者带的团队。<b>横轴 = 团队均分</b>（越靠右，员工对管理评价越高）；'
+        f'<b>纵轴 = 团队内部打分一致性</b>（越靠上，大家感受越一致；越靠下，有人满意有人不满）。'
+        f'分界线是<b>内部参照线</b>（均分 {mean_med:.2f} / 一致性 {std_med:.3f}，取自{med_src}）。'
+        f'盖洛普研究显示，团队敬业度的差异约七成来自管理者——所以每个点首先读作"这位管理者带团队的效果"，而不是"这拨员工的问题"。</div>'
         f'{svg}'
-        f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=人员间标准差(σ) · 颜色=象限 · 标签内显示部门名+人数 · '
-        f'两点过近时叠加白色描边区分 · 两条虚线为<b>中位数阈值</b>（均分中位数 {mean_med:.2f} / 离散中位数 {std_med:.3f}，取自{med_src}）</div>'
+        f'<div class="legend">仅展示{scope_desc} · 横轴=团队均分 · 纵轴=团队内部打分一致性（内部参照） · 颜色=区域位置 · 标签内显示部门名+人数 · '
+        f'两点过近时叠加白色描边区分 · 两条虚线为<b>内部参照线</b>（均分 {mean_med:.2f} / 一致性 {std_med:.3f}，取自{med_src}）</div>'
     )
     if part == "chart":
         return chart
     if part == "cards":
-        return cards_html + table_html
+        return table_html
     return (
         f'<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:var(--shadow)">'
-        f'{chart}{cards_html}{table_html}'
+        f'{chart}{table_html}'
         f'</div>'
     )
 
@@ -1826,7 +1786,7 @@ def render_vp(data, bu_name, insights):
     body += vp_dimension_diagnosis(bu, comp, meta)
     # 单列展示：二级部门负责人效能象限（通栏）
     body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>二级部门负责人效能象限 "
-             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"<small>团队均分 vs 内部打分一致性 · 内部参照线</small></div>"
              f"{manager_quadrant_html(data, bu_name, meta, part='chart')}</div>")
     # 单列展示：二级部门维度数据对比（通栏）
     tree = [(f"{l2n}", l2, l2.get("percentile_vs_l2"), 0, None)
@@ -1913,7 +1873,7 @@ def render_manager_l2(data, bu_name, l2_name, insights):
     body += vp_dimension_diagnosis(l2, comp, meta, unit_label="本二级部门")
     # 单列展示：三级部门负责人效能象限（通栏）
     body += (f"<div class='vp-wide'><div class='ct'><span class='dot'></span>三级部门负责人效能象限 "
-             f"<small>团队均分 vs 人员间标准差 · 中位数阈值</small></div>"
+             f"<small>团队均分 vs 内部打分一致性 · 内部参照线</small></div>"
              f"{manager_quadrant_html(data, bu_name, meta, part='chart', l2_name=l2_name)}</div>")
     # 单列展示：三级部门维度数据对比（通栏）
     tree = [(f"{dn}", d, d.get("percentile_vs_depts"), 0, None)
@@ -2001,11 +1961,13 @@ def render_unified(data, insights):
     vp_idx_file = f"VP索引_选择事业部{period_suffix}.html"
     mgr_l2_idx_file = f"经理人（2级）索引_选择二级部门{period_suffix}.html"
     mgr_idx_file = f"经理人索引_选择部门{period_suffix}.html"
+    about_file = f"组织健康诊断QA14_说明讲解{period_suffix}.html"
     cards = [
         ("🏢", "CEO 全景报告", "公司级组织健康总览，含健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、系统性 vs 局部问题诊断、一级事业部横向对比", "CEO 视角", "#dbeafe", "#1e40af", ceo_file),
         ("📊", "VP 事业部报告", "各一级事业部横向对比，含二级及三级部门热力图（含主管效能标签）、员工类型分布、本部特质诊断、跨部门共性识别、逐题对比", "VP 视角", "#fce7f3", "#be185d", vp_idx_file),
         ("👤", "经理人（2级）部门报告", "各二级部门报告，内容与 VP 面板完全一致：层次诊断、三级部门负责人效能象限、维度对比、员工类型分布、员工群体洞察、管理者流失风险、行动建议", "经理人（2级）视角", "#e0f2fe", "#0369a1", mgr_l2_idx_file),
         ("👥", "经理人（3级）团队报告", "各三级部门深度诊断，含根因假设、逐题对比、团队员工群体洞察、30天建议", "经理人（3级）视角", "#dcfce7", "#15803d", mgr_idx_file),
+        ("📘", "工具说明与解读", "本工具的逻辑与生成内容讲解：问卷四层模型、评分评级、四视角看板、经理人效能象限判定、员工类型分布、数据口径与匿名保护", "说明文档", "#f1f5f9", "#475569", about_file),
     ]
     grid = '<div class="entry-grid">'
     for icon, title, desc, tag, bg, col, href in cards:
@@ -2022,6 +1984,150 @@ def render_unified(data, insights):
              f' · 题数：{len(meta["questions"])} 题 · '
              f'评级：5 分制</div>')
     return page(f"组织健康诊断QA14-统一入口{period_suffix}", body)
+
+
+ABOUT_CSS = """
+.ab-hero{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;border-radius:14px;padding:24px 28px;margin-bottom:20px;box-shadow:var(--shadow-lg)}
+.ab-hero h1{font-size:23px;font-weight:800;letter-spacing:.3px}
+.ab-hero .sub{opacity:.85;margin-top:8px;font-size:13px;line-height:1.7}
+.ab-section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow)}
+.ab-section h2{font-size:17px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.ab-section .lead{font-size:13px;color:var(--sub);line-height:1.85;margin-bottom:14px}
+.ab-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.ab-card{background:#f9fafb;border:1px solid var(--line);border-radius:12px;padding:15px 17px}
+.ab-card h3{font-size:14px;font-weight:700;margin-bottom:6px;color:#1f2937}
+.ab-card p{font-size:13px;color:var(--sub);line-height:1.7}
+.ab-tip{background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;padding:12px 16px;font-size:13px;color:#374151;line-height:1.85;margin-top:12px}
+.ab-pill{display:inline-block;background:#f3f4f6;border-radius:20px;padding:6px 14px;font-size:12px;color:#374151;margin:4px 6px 0 0}
+.ab-btns{margin:10px 0 4px}
+.ab-back{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:600;margin-top:8px}
+.ab-quad{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.ab-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px}
+.ab-flow .step{background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--sub);line-height:1.6}
+.ab-flow .step b{display:block;color:#1f2937;font-size:13px;margin-bottom:3px}
+"""
+def render_about(data, insights):
+    """说明讲解页：工具逻辑、问卷模型、四层看板、效能象限、数据口径等"""
+    meta = data["meta"]
+    period = meta.get("period") or ""
+    period_suffix = f"-{period}" if period else ""
+    qs = meta.get("questions", {})
+    dims = meta.get("dimensions", {})
+    dim_order = ["基本需求", "管理支持", "团队归属", "成长发展"]
+    dim_rows = ""
+    for dn in dim_order:
+        d = dims.get(dn, {})
+        qlist = d.get("questions", [])
+        qtext = "<br>".join(f'<b>{q}</b> {esc(qs.get(q, ""))}' for q in qlist)
+        dim_rows += (
+            f'<tr><td style="padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;width:130px;color:#374151;vertical-align:top">'
+            f'{esc(dn)}<div style="font-weight:400;font-size:12px;color:var(--sub);margin-top:4px">{esc(d.get("core_question",""))}</div></td>'
+            f'<td style="padding:12px 14px;border-bottom:1px solid var(--line);font-size:13px;color:#374151;line-height:1.9">{qtext}</td></tr>'
+        )
+    # 经理人效能象限示意
+    quad_svg = (
+        '<svg width="360" height="250" viewBox="0 0 360 250" style="max-width:100%">'
+        '<rect x="0" y="0" width="360" height="250" rx="10" fill="#f8fafc"/>'
+        '<rect x="0" y="0" width="180" height="125" fill="#fef3c7" opacity=".6"/>'
+        '<rect x="180" y="0" width="180" height="125" fill="#dcfce7" opacity=".6"/>'
+        '<rect x="0" y="125" width="180" height="125" fill="#fee2e2" opacity=".6"/>'
+        '<rect x="180" y="125" width="180" height="125" fill="#dbeafe" opacity=".6"/>'
+        '<line x1="180" y1="0" x2="180" y2="250" stroke="#94a3b8" stroke-dasharray="4 4"/>'
+        '<line x1="0" y1="125" x2="360" y2="125" stroke="#94a3b8" stroke-dasharray="4 4"/>'
+        '<text x="10" y="22" font-size="11" font-weight="700" fill="#92400e">低于内部参照 · 高度一致</text>'
+        '<text x="350" y="22" text-anchor="end" font-size="11" font-weight="700" fill="#166534">高于内部参照 · 高度一致</text>'
+        '<text x="10" y="240" font-size="11" font-weight="700" fill="#991b1b">低于内部参照 · 分歧较大</text>'
+        '<text x="350" y="240" text-anchor="end" font-size="11" font-weight="700" fill="#1e40af">高于内部参照 · 分歧较大</text>'
+        '<text x="182" y="244" font-size="10" fill="#64748b">→ 团队均分（越右越好）</text>'
+        '<text x="8" y="122" font-size="10" fill="#64748b" transform="rotate(-90 8 122)">↑ 低离散 / 高一致</text>'
+        '</svg>'
+    )
+    body = (
+        f'<style>{ABOUT_CSS}</style>'
+        f'<div class="ab-hero"><h1>组织健康诊断 QA14 · 说明与解读</h1>'
+        f'<div class="sub">基于 Q12 官方问卷（12 题 · 5 分制）的组织健康诊断工具，'
+        f'从员工调研明细自动生成四个管理层视角的看板报告。<br>'
+        f'本期数据：{meta["total_respondents"]} 人调研 · {period or "本期"} · 评级 1–5 分制</div></div>'
+        # 1 这是什么
+        f'<div class="ab-section"><h2>一、工具定位</h2>'
+        f'<p class="lead">用一套结构化问卷把"组织健康"拆成可量化、可对比的指标，'
+        f'从全员到一线团队逐级下钻，让不同层级的管理者只看自己该看的内容。'
+        f'它不是一次性的满意度打分，而是按 "基本需求 → 管理支持 → 团队归属 → 成长发展" '
+        f'四个递进层次诊断组织能力短板。</p>'
+        f'<div class="ab-kv">'
+        f'<span class="ab-pill">问卷：12 题固定 5 分制</span>'
+        f'<span class="ab-pill">四层模型映射</span>'
+        f'<span class="ab-pill">四视角看板（CEO / VP / 经理人 2 级 / 经理人 3 级）</span>'
+        f'<span class="ab-pill">匿名保护（n&lt;{meta.get("min_n",4)} 抑制）</span>'
+        f'<span class="ab-pill">常模参考：行业常模（2023-2024）</span></div></div>'
+        # 2 问卷与四层模型
+        f'<div class="ab-section"><h2>二、问卷与四层模型</h2>'
+        f'<p class="lead">12 道题按内容递进到四个层次，每个层次回答一个核心问题。'
+        f'维度均分决定该层是"优势 / 良好 / 关注 / 预警"。</p>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:13px">'
+        f'<thead><tr style="background:#f9fafb;text-align:left">'
+        f'<th style="padding:10px 14px;border-bottom:2px solid var(--line);color:#374151">层次</th>'
+        f'<th style="padding:10px 14px;border-bottom:2px solid var(--line);color:#374151">对应题项</th></tr></thead>'
+        f'{dim_rows}</table></div>'
+        # 3 评分与评级
+        f'<div class="ab-section"><h2>三、评分与评级</h2>'
+        f'<p class="lead">单题与维度均按 1–5 分制计分，全员均值映射为四个健康等级：</p>'
+        f'<div class="ab-kv">'
+        f'<span class="ab-pill">均值 ≥ 4.5 · 优势</span>'
+        f'<span class="ab-pill">4.0–4.49 · 良好</span>'
+        f'<span class="ab-pill">3.5–3.99 · 关注</span>'
+        f'<span class="ab-pill">&lt; 3.5 · 预警</span></div>'
+        f'<div class="ab-tip">层级健康指数由各层维度均分加权合成；事业部 / 部门综合均值再参与横向对比与象限定位。'
+        f'所有阈值与中位线均取自<b>本期同级单位</b>（如一级事业部之间、三级部门之间），不做外部排名。</div></div>'
+        # 4 四层看板
+        f'<div class="ab-section"><h2>四、四层看板分别看什么</h2>'
+        f'<div class="ab-grid">'
+        f'<div class="ab-card"><h3>🏢 CEO 全景报告</h3><p>公司级总览：健康指数仪表盘、诊断洞察、四维度得分（公司 vs 行业常模）、'
+        f'系统性 vs 局部问题诊断、一级事业部横向对比。</p></div>'
+        f'<div class="ab-card"><h3>📊 VP 事业部报告</h3><p>各一级事业部：二级/三级部门热力图（含主管效能标签）、员工类型分布、'
+        f'本部特质诊断、跨部门共性识别、逐题对比。</p></div>'
+        f'<div class="ab-card"><h3>👤 经理人（2级）部门报告</h3><p>各二级部门，结构与 VP 一致：层次诊断、三级部门负责人效能象限、'
+        f'维度对比、员工类型分布、员工群体洞察、管理者流失风险、行动建议。</p></div>'
+        f'<div class="ab-card"><h3>👥 经理人（3级）团队报告</h3><p>各三级部门深度诊断：根因假设、逐题对比、'
+        f'团队员工群体洞察、30 天行动建议。</p></div>'
+        f'</div></div>'
+        # 5 经理人效能象限
+        f'<div class="ab-section"><h2>五、经理人效能象限（核心逻辑）</h2>'
+        f'<p class="lead">以每位负责人（二级/三级部门）的 <b>团队均分</b> 与 <b>团队内部打分一致性</b> 定位，'
+        f'两条<b>内部参照线</b>（均分中位数、一致性中位数）取自本期全公司同级部门，作为统一基准（不随单个事业部内部样本浮动）。'
+        f'横轴越右越好；纵轴越上团队评价越一致（低离散），越下评价越分化（高离散）。'
+        f'每个点按相对内部参照线的位置落入四个区域：</p>'
+        f'<div class="ab-quad">{quad_svg}</div></div>'
+        # 6 员工类型分布
+        f'<div class="ab-section"><h2>六、员工类型分布</h2>'
+        f'<p class="lead">把敬业度拆成四类，按部门做 100% 堆叠展示，按消极型占比降序，'
+        f'帮管理者一眼看到"问题集中在哪些团队"。</p>'
+        f'<div class="ab-kv">'
+        f'<span class="ab-pill">高效型 · 敬业且均分≥4.5</span>'
+        f'<span class="ab-pill">激发型 · 敬业但 4.0–4.5</span>'
+        f'<span class="ab-pill">中立型 · 中间态度</span>'
+        f'<span class="ab-pill">消极型 · 怠工/低投入</span></div></div>'
+        # 7 数据口径与匿名
+        f'<div class="ab-section"><h2>七、数据口径与匿名保护</h2>'
+        f'<div class="ab-grid">'
+        f'<div class="ab-card"><h3>匿名保护</h3><p>三级部门调研人数 &lt; {meta.get("min_n",4)} 时抑制展示，'
+        f'避免通过小样本反推个人，确保员工匿名性。</p></div>'
+        f'<div class="ab-card"><h3>统计口径</h3><p>所有均值、标准差均基于团队层面聚合；'
+        f'象限中位数阈值取本期同级单位，常模参考行业常模（2023-2024）。</p></div>'
+        f'</div></div>'
+        # 8 如何生成
+        f'<div class="ab-section"><h2>八、报告如何生成</h2>'
+        f'<p class="lead">输入一份员工调研明细（含题项得分与组织层级），经两步自动产出全部看板：</p>'
+        f'<div class="ab-flow">'
+        f'<div class="step"><b>① 调研明细</b>员工逐题 1–5 分 + 组织层级（一级/二级/三级部门）</div>'
+        f'<div class="step"><b>② 聚合分析</b>analyze_survey.py 计算维度均分、敬业度、σ、中位数阈值</div>'
+        f'<div class="step"><b>③ 渲染看板</b>render_report.py 按四视角生成 HTML 报告</div>'
+        f'<div class="step"><b>④ 发布分享</b>打包为可访问链接，分发给对应管理者</div>'
+        f'</div>'
+        f'<div class="ab-btns"><a class="ab-back" href="组织健康诊断QA14_统一入口总览{period_suffix}.html">← 返回统一入口</a></div>'
+        f'</div>'
+    )
+    return page(f"组织健康诊断QA14-说明讲解{period_suffix}", body)
 
 
 def render_vp_index(data, insights):
@@ -2129,8 +2235,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--analysis", required=True)
     ap.add_argument("--insights", help="AI 撰写的洞察 JSON (可选)")
-    ap.add_argument("--type", required=True, choices=["ceo", "vp", "manager", "manager_l2", "unified", "vp_index", "manager_index", "manager_l2_index"],
-                    help="ceo=CEO看板; vp=VP看板; manager=经理人（3级）看板; manager_l2=经理人（2级）看板; unified=统一入口; vp_index=VP索引; manager_index=经理人索引; manager_l2_index=经理人（2级）索引")
+    ap.add_argument("--type", required=True, choices=["ceo", "vp", "manager", "manager_l2", "unified", "vp_index", "manager_index", "manager_l2_index", "about"],
+                    help="ceo=CEO看板; vp=VP看板; manager=经理人（3级）看板; manager_l2=经理人（2级）看板; unified=统一入口; vp_index=VP索引; manager_index=经理人索引; manager_l2_index=经理人（2级）索引; about=说明讲解")
     ap.add_argument("--target", default="all",
                     help='vp: 一级事业部名或 all; manager: "一级事业部/二级/三级部门" 或 all')
     ap.add_argument("--outdir", default="reports")
@@ -2177,6 +2283,10 @@ def main():
     elif args.type == "manager_l2_index":
         p = outdir / f"经理人（2级）索引_选择二级部门{('-' + period) if period else ''}.html"
         p.write_text(render_manager_l2_index(data, ins_all), encoding="utf-8")
+        written.append(p)
+    elif args.type == "about":
+        p = outdir / f"组织健康诊断QA14_说明讲解{('-' + period) if period else ''}.html"
+        p.write_text(render_about(data, ins_all), encoding="utf-8")
         written.append(p)
     elif args.type == "manager_l2":
         pairs = []
